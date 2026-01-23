@@ -1,18 +1,125 @@
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import type { Bridge } from '@/types';
+import type { Bridge, Sensor } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MapPin, Activity, AlertTriangle, Clock, ArrowRight } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { MapPin, Clock, ArrowRight, AlertTriangle, TableIcon, LineChart } from 'lucide-react';
+import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { getSensorsByBridge } from '@/data/mockData';
+import { LineChart as RechartsLine, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 
 interface BridgeCardProps {
   bridge: Bridge;
 }
 
+type AxisFilter = 'all' | 'X' | 'Y' | 'Z';
+type ViewMode = 'table' | 'chart';
+
+// Generate mock sensor readings with axis data
+const generateSensorReadings = (bridgeId: string) => {
+  const sensors = getSensorsByBridge(bridgeId);
+  const axes: Array<'X' | 'Y' | 'Z'> = ['X', 'Y', 'Z'];
+  const readings: Array<{
+    sensorName: string;
+    axis: 'X' | 'Y' | 'Z';
+    type: 'Frequência' | 'Aceleração';
+    lastValue: string;
+    reference: string;
+    variation: number;
+    status: 'normal' | 'alert' | 'critical';
+    updatedAt: string;
+  }> = [];
+
+  // Generate readings for each sensor with different axes
+  for (let i = 1; i <= 5; i++) {
+    const sensor = sensors[i % sensors.length] || sensors[0];
+    axes.forEach((axis) => {
+      if (axis === 'Y' && Math.random() > 0.3) return; // Y axis less common for frequency
+      
+      const isFrequency = Math.random() > 0.3;
+      const baseValue = isFrequency ? 3.5 + Math.random() * 0.8 : 0.1 + Math.random() * 10;
+      const refMin = isFrequency ? 3.0 : 0.3;
+      const refMax = isFrequency ? 3.7 : 10.0;
+      const variation = ((baseValue - refMin) / refMin) * 100;
+      
+      let status: 'normal' | 'alert' | 'critical' = 'normal';
+      if (Math.abs(variation) > 20) status = 'critical';
+      else if (Math.abs(variation) > 10) status = 'alert';
+
+      readings.push({
+        sensorName: `Sensor 0${i}`,
+        axis,
+        type: isFrequency ? 'Frequência' : 'Aceleração',
+        lastValue: isFrequency ? `${baseValue.toFixed(2)} Hz` : `${baseValue.toFixed(2)} m/s²`,
+        reference: isFrequency ? `${refMin}-${refMax} Hz` : `< ${refMax} m/s²`,
+        variation: Math.round(variation * 10) / 10,
+        status,
+        updatedAt: format(new Date(Date.now() - Math.random() * 3600000), 'dd/MM, HH:mm'),
+      });
+    });
+  }
+
+  return readings.slice(0, 12); // Limit to 12 readings
+};
+
+// Generate chart data
+const generateChartData = (bridgeId: string) => {
+  const times = ['10:03', '10:18', '10:33', '10:48', '11:03'];
+  
+  return {
+    frequency: times.map(time => ({
+      time,
+      sensorX1: 3.4 + Math.random() * 0.3,
+      sensorZ1: 3.6 + Math.random() * 0.3,
+      sensorX2: 3.7 + Math.random() * 0.3,
+      sensorZ2: 3.5 + Math.random() * 0.3,
+      sensorX3: 4.0 + Math.random() * 0.3,
+      sensorZ3: 3.8 + Math.random() * 0.3,
+    })),
+    acceleration: times.map(time => ({
+      time,
+      sensorX: 9.5 + Math.random() * 1.5,
+      sensorY: 0.1 + Math.random() * 0.1,
+      sensorZ: 0.05 + Math.random() * 0.05,
+    })),
+  };
+};
+
 export function BridgeCard({ bridge }: BridgeCardProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [axisFilter, setAxisFilter] = useState<AxisFilter>('all');
+
+  const sensorReadings = useMemo(() => generateSensorReadings(bridge.id), [bridge.id]);
+  const chartData = useMemo(() => generateChartData(bridge.id), [bridge.id]);
+
+  const filteredReadings = useMemo(() => {
+    if (axisFilter === 'all') return sensorReadings;
+    return sensorReadings.filter(r => r.axis === axisFilter);
+  }, [sensorReadings, axisFilter]);
+
+  const alertCount = useMemo(() => 
+    sensorReadings.filter(r => r.status === 'alert' || r.status === 'critical').length
+  , [sensorReadings]);
+
   const getStatusConfig = (status: Bridge['structuralStatus']) => {
     const configs = {
       normal: { label: 'Normal', className: 'bg-success text-success-foreground' },
@@ -24,9 +131,9 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
 
   const getCriticalityConfig = (criticality: Bridge['operationalCriticality']) => {
     const configs = {
-      low: { label: 'Baixa', className: 'border-success text-success' },
-      medium: { label: 'Média', className: 'border-warning text-warning' },
-      high: { label: 'Alta', className: 'border-destructive text-destructive' },
+      low: { label: 'Baixa', className: 'bg-success/20 text-success' },
+      medium: { label: 'Média', className: 'bg-warning/20 text-warning' },
+      high: { label: 'Alta', className: 'bg-destructive/20 text-destructive' },
     };
     return configs[criticality];
   };
@@ -34,76 +141,204 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
   const statusConfig = getStatusConfig(bridge.structuralStatus);
   const criticalityConfig = getCriticalityConfig(bridge.operationalCriticality);
 
-  return (
-    <Card className="group overflow-hidden transition-all hover:shadow-lg">
-      {/* Image */}
-      <div className="relative h-40 overflow-hidden bg-muted">
-        {bridge.image ? (
-          <img
-            src={bridge.image}
-            alt={bridge.name}
-            className="h-full w-full object-cover transition-transform group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <Activity className="h-12 w-12 text-muted-foreground/50" />
-          </div>
-        )}
-        {/* Status Badge */}
-        <Badge className={cn('absolute right-3 top-3', statusConfig.className)}>
-          {statusConfig.label}
-        </Badge>
-        {/* Alert Indicator */}
-        {bridge.hasActiveAlerts && (
-          <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-destructive px-2 py-1 text-xs text-destructive-foreground">
-            <AlertTriangle className="h-3 w-3" />
-            Alertas
-          </div>
-        )}
-      </div>
+  const getVariationColor = (variation: number) => {
+    if (Math.abs(variation) > 20) return 'text-destructive';
+    if (Math.abs(variation) > 10) return 'text-warning';
+    return 'text-success';
+  };
 
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <div>
-            <h3 className="font-semibold text-foreground">{bridge.name}</h3>
-            <p className="text-sm text-muted-foreground">ID: {bridge.id}</p>
+  const getStatusIndicator = (status: 'normal' | 'alert' | 'critical') => {
+    const colors = {
+      normal: 'bg-success',
+      alert: 'bg-warning',
+      critical: 'bg-destructive',
+    };
+    return <span className={cn('inline-block h-2.5 w-2.5 rounded-full', colors[status])} />;
+  };
+
+  return (
+    <Card className="overflow-hidden transition-all hover:shadow-lg flex flex-col">
+      {/* Header with location and status */}
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <Link to={`/bridge/${bridge.id}`} className="font-semibold text-foreground hover:text-primary transition-colors line-clamp-1">
+              {bridge.name}
+            </Link>
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
+              <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="line-clamp-1">{bridge.location}</span>
+            </div>
           </div>
-          <Badge variant="outline" className={criticalityConfig.className}>
-            Criticidade {criticalityConfig.label}
+          <Badge className={cn('flex-shrink-0', statusConfig.className)}>
+            {statusConfig.label}
+          </Badge>
+        </div>
+
+        {/* Criticality Badge */}
+        <div className="mt-2">
+          <span className="text-xs text-muted-foreground mr-1.5">Criticidade</span>
+          <Badge variant="secondary" className={cn('text-xs', criticalityConfig.className)}>
+            {criticalityConfig.label}
           </Badge>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-3 pb-3">
-        {/* Location */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <MapPin className="h-4 w-4" />
-          <span>{bridge.location}</span>
+      <CardContent className="flex-1 pb-3">
+        {/* View Toggle and Axis Filter */}
+        <div className="flex items-center justify-between mb-3">
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-auto">
+            <TabsList className="h-8">
+              <TabsTrigger value="table" className="h-7 px-2 text-xs">
+                <TableIcon className="h-3.5 w-3.5 mr-1" />
+                Tabela
+              </TabsTrigger>
+              <TabsTrigger value="chart" className="h-7 px-2 text-xs">
+                <LineChart className="h-3.5 w-3.5 mr-1" />
+                Gráfico
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <Select value={axisFilter} onValueChange={(v) => setAxisFilter(v as AxisFilter)}>
+            <SelectTrigger className="w-[100px] h-8 text-xs">
+              <SelectValue placeholder="Eixos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos Eixos</SelectItem>
+              <SelectItem value="X">Eixo X</SelectItem>
+              <SelectItem value="Y">Eixo Y</SelectItem>
+              <SelectItem value="Z">Eixo Z</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        {/* Info Grid */}
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          <div>
-            <span className="text-muted-foreground">Concessão:</span>
-            <p className="font-medium">{bridge.concession}</p>
+        {viewMode === 'table' ? (
+          /* Table View */
+          <div className="border rounded-md overflow-hidden">
+            <div className="max-h-[280px] overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Sensor</TableHead>
+                    <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Eixo</TableHead>
+                    <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Tipo</TableHead>
+                    <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Último Valor</TableHead>
+                    <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Referência</TableHead>
+                    <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Variação</TableHead>
+                    <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Status</TableHead>
+                    <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Atualizado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredReadings.map((reading, idx) => (
+                    <TableRow key={idx} className="h-9">
+                      <TableCell className="text-xs font-medium py-1">{reading.sensorName}</TableCell>
+                      <TableCell className="text-xs py-1">
+                        <Badge variant="outline" className={cn(
+                          'text-[10px] px-1.5 py-0',
+                          reading.axis === 'X' && 'text-destructive border-destructive',
+                          reading.axis === 'Y' && 'text-warning border-warning',
+                          reading.axis === 'Z' && 'text-primary border-primary'
+                        )}>
+                          {reading.axis}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground py-1">{reading.type}</TableCell>
+                      <TableCell className="text-xs font-medium py-1">{reading.lastValue}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground py-1">{reading.reference}</TableCell>
+                      <TableCell className={cn('text-xs font-medium py-1', getVariationColor(reading.variation))}>
+                        {reading.variation > 0 ? '+' : ''}{reading.variation}%
+                      </TableCell>
+                      <TableCell className="py-1">{getStatusIndicator(reading.status)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground py-1">{reading.updatedAt}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
-          <div>
-            <span className="text-muted-foreground">Sensores:</span>
-            <p className="font-medium">{bridge.sensorCount} ativos</p>
-          </div>
-        </div>
+        ) : (
+          /* Chart View */
+          <div className="space-y-3">
+            <div className="text-xs font-medium text-muted-foreground">Últimos 5 Dados por Sensor</div>
+            
+            {/* Frequency Chart */}
+            <div className="border rounded-md p-2">
+              <div className="text-xs font-medium mb-2">Frequência (Hz)</div>
+              <div className="h-[100px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsLine data={chartData.frequency}>
+                    <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <YAxis domain={[3, 4.5]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <Tooltip />
+                    {(axisFilter === 'all' || axisFilter === 'X') && (
+                      <>
+                        <Line type="monotone" dataKey="sensorX1" stroke="hsl(var(--destructive))" strokeWidth={1.5} dot={{ r: 2 }} />
+                        <Line type="monotone" dataKey="sensorX2" stroke="hsl(var(--destructive))" strokeWidth={1.5} dot={{ r: 2 }} />
+                        <Line type="monotone" dataKey="sensorX3" stroke="hsl(var(--destructive))" strokeWidth={1.5} dot={{ r: 2 }} />
+                      </>
+                    )}
+                    {(axisFilter === 'all' || axisFilter === 'Z') && (
+                      <>
+                        <Line type="monotone" dataKey="sensorZ1" stroke="hsl(var(--chart-3))" strokeWidth={1.5} strokeDasharray="4 2" dot={{ r: 2 }} />
+                        <Line type="monotone" dataKey="sensorZ2" stroke="hsl(var(--chart-3))" strokeWidth={1.5} strokeDasharray="4 2" dot={{ r: 2 }} />
+                        <Line type="monotone" dataKey="sensorZ3" stroke="hsl(var(--chart-3))" strokeWidth={1.5} strokeDasharray="4 2" dot={{ r: 2 }} />
+                      </>
+                    )}
+                  </RechartsLine>
+                </ResponsiveContainer>
+              </div>
+            </div>
 
-        {/* Last Update */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {/* Acceleration Chart */}
+            <div className="border rounded-md p-2">
+              <div className="text-xs font-medium mb-2">Aceleração (m/s²)</div>
+              <div className="h-[80px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsLine data={chartData.acceleration}>
+                    <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <Tooltip />
+                    {(axisFilter === 'all' || axisFilter === 'X') && (
+                      <Line type="monotone" dataKey="sensorX" stroke="hsl(var(--chart-2))" strokeWidth={1.5} dot={{ r: 2 }} />
+                    )}
+                    {(axisFilter === 'all' || axisFilter === 'Y') && (
+                      <Line type="monotone" dataKey="sensorY" stroke="hsl(var(--warning))" strokeWidth={1.5} dot={{ r: 2 }} />
+                    )}
+                    {(axisFilter === 'all' || axisFilter === 'Z') && (
+                      <Line type="monotone" dataKey="sensorZ" stroke="hsl(var(--success))" strokeWidth={1.5} dot={{ r: 2 }} />
+                    )}
+                  </RechartsLine>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Footer Stats */}
+        <div className="flex items-center justify-between mt-3 pt-3 border-t text-xs text-muted-foreground">
+          <div className="flex items-center gap-1">
+            <span>🔌 {bridge.sensorCount} sensores</span>
+          </div>
+          {alertCount > 0 && (
+            <div className="flex items-center gap-1 text-warning">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span>{alertCount} alerta(s)</span>
+            </div>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
           <Clock className="h-3 w-3" />
           <span>
-            Atualizado {formatDistanceToNow(new Date(bridge.lastUpdate), { addSuffix: true, locale: ptBR })}
+            Atualizado: {format(new Date(bridge.lastUpdate), "dd/MM/yyyy, HH:mm:ss")}
           </span>
         </div>
       </CardContent>
 
-      <CardFooter className="pt-0">
-        <Button asChild variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground">
+      <CardFooter className="pt-0 pb-4">
+        <Button asChild variant="outline" className="w-full group hover:bg-primary hover:text-primary-foreground">
           <Link to={`/bridge/${bridge.id}`} className="flex items-center gap-2">
             Ver detalhes
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />

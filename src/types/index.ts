@@ -25,6 +25,9 @@ export interface Company {
 export type StructuralStatus = 'normal' | 'alert' | 'critical';
 export type OperationalCriticality = 'low' | 'medium' | 'high';
 
+// Bridge/Asset typology
+export type BridgeTypology = 'Ponte' | 'Viaduto' | 'Passarela';
+
 // Bridge/Asset
 export interface Bridge {
   id: string;
@@ -32,6 +35,8 @@ export interface Bridge {
   companyId: string;
   location: string;
   concession: string;
+  rodovia: string;
+  typology: BridgeTypology;
   km: number;
   beamType: string;
   spanType: string;
@@ -138,11 +143,13 @@ export interface DashboardFilters {
   structuralStatus: StructuralStatus | 'all';
   operationalCriticality: OperationalCriticality | 'all';
   concession: string;
+  rodovia: string;
+  typology: BridgeTypology | '';
   beamType: string;
   spanType: string;
   material: string;
   kmRange: [number, number];
-  hasActiveAlerts: boolean | null;
+  hasActiveAlerts: 'all' | 'yes' | 'no';
   companyId: string | 'all';
 }
 
