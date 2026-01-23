@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import type { DashboardFilters } from '@/types';
-import { mockBridges, mockCompanies } from '@/data/mockData';
+import { mockBridges } from '@/data/mockData';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,17 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Slider } from '@/components/ui/slider';
-import { Search, SlidersHorizontal, X, RotateCcw } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 
 interface DashboardFiltersProps {
   filters: DashboardFilters;
@@ -32,24 +23,26 @@ const defaultFilters: DashboardFilters = {
   structuralStatus: 'all',
   operationalCriticality: 'all',
   concession: '',
+  rodovia: '',
+  typology: '',
   beamType: '',
   spanType: '',
   material: '',
   kmRange: [0, 200],
-  hasActiveAlerts: null,
+  hasActiveAlerts: 'all',
   companyId: 'all',
 };
 
 export function DashboardFiltersComponent({ filters, onFiltersChange }: DashboardFiltersProps) {
-  const [isOpen, setIsOpen] = useState(false);
-
   // Get unique values for filters
   const filterOptions = useMemo(() => {
     const concessions = [...new Set(mockBridges.map((b) => b.concession))];
+    const rodovias = [...new Set(mockBridges.map((b) => b.rodovia))];
+    const typologies = [...new Set(mockBridges.map((b) => b.typology))];
     const beamTypes = [...new Set(mockBridges.map((b) => b.beamType))];
     const spanTypes = [...new Set(mockBridges.map((b) => b.spanType))];
     const materials = [...new Set(mockBridges.map((b) => b.material))];
-    return { concessions, beamTypes, spanTypes, materials };
+    return { concessions, rodovias, typologies, beamTypes, spanTypes, materials };
   }, []);
 
   const handleSearchChange = useCallback((value: string) => {
@@ -60,23 +53,26 @@ export function DashboardFiltersComponent({ filters, onFiltersChange }: Dashboar
     onFiltersChange(defaultFilters);
   }, [onFiltersChange]);
 
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (filters.structuralStatus !== 'all') count++;
-    if (filters.operationalCriticality !== 'all') count++;
-    if (filters.concession) count++;
-    if (filters.beamType) count++;
-    if (filters.spanType) count++;
-    if (filters.material) count++;
-    if (filters.hasActiveAlerts !== null) count++;
-    if (filters.kmRange[0] > 0 || filters.kmRange[1] < 200) count++;
-    return count;
+  const hasActiveFilters = useMemo(() => {
+    return (
+      filters.structuralStatus !== 'all' ||
+      filters.operationalCriticality !== 'all' ||
+      filters.concession !== '' ||
+      filters.rodovia !== '' ||
+      filters.typology !== '' ||
+      filters.beamType !== '' ||
+      filters.spanType !== '' ||
+      filters.material !== '' ||
+      filters.hasActiveAlerts !== 'all' ||
+      filters.kmRange[0] > 0 ||
+      filters.kmRange[1] < 200
+    );
   }, [filters]);
 
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-      {/* Search */}
-      <div className="relative flex-1">
+    <div className="space-y-4">
+      {/* Search bar */}
+      <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Buscar por nome, ID ou localização..."
@@ -94,162 +90,210 @@ export function DashboardFiltersComponent({ filters, onFiltersChange }: Dashboar
         )}
       </div>
 
-      {/* Quick Filters */}
-      <div className="flex gap-2">
-        <Select
-          value={filters.structuralStatus}
-          onValueChange={(value) => onFiltersChange({ ...filters, structuralStatus: value as DashboardFilters['structuralStatus'] })}
-        >
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos Status</SelectItem>
-            <SelectItem value="normal">Normal</SelectItem>
-            <SelectItem value="alert">Alerta</SelectItem>
-            <SelectItem value="critical">Crítico</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={filters.operationalCriticality}
-          onValueChange={(value) => onFiltersChange({ ...filters, operationalCriticality: value as DashboardFilters['operationalCriticality'] })}
-        >
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Criticidade" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas</SelectItem>
-            <SelectItem value="low">Baixa</SelectItem>
-            <SelectItem value="medium">Média</SelectItem>
-            <SelectItem value="high">Alta</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {/* Advanced Filters */}
-        <Sheet open={isOpen} onOpenChange={setIsOpen}>
-          <SheetTrigger asChild>
-            <Button variant="outline" className="relative">
-              <SlidersHorizontal className="h-4 w-4 mr-2" />
-              Filtros
-              {activeFilterCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
-                  {activeFilterCount}
-                </span>
-              )}
+      {/* Filtros Operacionais */}
+      <div className="rounded-lg border bg-card p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-primary">FILTROS OPERACIONAIS</h3>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={handleReset} className="text-destructive hover:text-destructive">
+              <X className="h-4 w-4 mr-1" />
+              Limpar Filtros
             </Button>
-          </SheetTrigger>
-          <SheetContent className="w-[400px] sm:w-[540px]">
-            <SheetHeader>
-              <SheetTitle className="flex items-center justify-between">
-                Filtros Avançados
-                <Button variant="ghost" size="sm" onClick={handleReset}>
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Limpar
-                </Button>
-              </SheetTitle>
-            </SheetHeader>
-            <div className="mt-6 space-y-6">
-              {/* Concession */}
-              <div className="space-y-2">
-                <Label>Concessão</Label>
-                <Select
-                  value={filters.concession || 'all'}
-                  onValueChange={(value) => onFiltersChange({ ...filters, concession: value === 'all' ? '' : value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    {filterOptions.concessions.map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+          )}
+        </div>
 
-              {/* Beam Type */}
-              <div className="space-y-2">
-                <Label>Tipo de Viga</Label>
-                <Select
-                  value={filters.beamType || 'all'}
-                  onValueChange={(value) => onFiltersChange({ ...filters, beamType: value === 'all' ? '' : value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {filterOptions.beamTypes.map((t) => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-10 gap-4">
+          {/* Concessão */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Concessão</Label>
+            <Select
+              value={filters.concession || 'all'}
+              onValueChange={(value) => onFiltersChange({ ...filters, concession: value === 'all' ? '' : value })}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {filterOptions.concessions.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-              {/* Span Type */}
-              <div className="space-y-2">
-                <Label>Tipo de Vão</Label>
-                <Select
-                  value={filters.spanType || 'all'}
-                  onValueChange={(value) => onFiltersChange({ ...filters, spanType: value === 'all' ? '' : value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {filterOptions.spanTypes.map((t) => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+          {/* Rodovia */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Rodovia</Label>
+            <Select
+              value={filters.rodovia || 'all'}
+              onValueChange={(value) => onFiltersChange({ ...filters, rodovia: value === 'all' ? '' : value })}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {filterOptions.rodovias.map((r) => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-              {/* Material */}
-              <div className="space-y-2">
-                <Label>Material</Label>
-                <Select
-                  value={filters.material || 'all'}
-                  onValueChange={(value) => onFiltersChange({ ...filters, material: value === 'all' ? '' : value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {filterOptions.materials.map((m) => (
-                      <SelectItem key={m} value={m}>{m}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+          {/* Tipologia */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Tipologia</Label>
+            <Select
+              value={filters.typology || 'all'}
+              onValueChange={(value) => onFiltersChange({ ...filters, typology: value === 'all' ? '' : value as DashboardFilters['typology'] })}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {filterOptions.typologies.map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-              {/* KM Range */}
-              <div className="space-y-4">
-                <Label>Intervalo de KM: {filters.kmRange[0]} - {filters.kmRange[1]}</Label>
-                <Slider
-                  value={filters.kmRange}
-                  onValueChange={(value) => onFiltersChange({ ...filters, kmRange: value as [number, number] })}
-                  min={0}
-                  max={200}
-                  step={5}
-                />
-              </div>
+          {/* Material Estrutural */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Material Estrutural</Label>
+            <Select
+              value={filters.material || 'all'}
+              onValueChange={(value) => onFiltersChange({ ...filters, material: value === 'all' ? '' : value })}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {filterOptions.materials.map((m) => (
+                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-              {/* Has Active Alerts */}
-              <div className="flex items-center justify-between">
-                <Label htmlFor="hasAlerts">Apenas com alertas ativos</Label>
-                <Switch
-                  id="hasAlerts"
-                  checked={filters.hasActiveAlerts === true}
-                  onCheckedChange={(checked) => onFiltersChange({ ...filters, hasActiveAlerts: checked ? true : null })}
-                />
-              </div>
+          {/* Status Estrutural */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Status Estrutural</Label>
+            <Select
+              value={filters.structuralStatus}
+              onValueChange={(value) => onFiltersChange({ ...filters, structuralStatus: value as DashboardFilters['structuralStatus'] })}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="normal">Normal</SelectItem>
+                <SelectItem value="alert">Alerta</SelectItem>
+                <SelectItem value="critical">Crítico</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Criticidade Operacional */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Criticidade Operacional</Label>
+            <Select
+              value={filters.operationalCriticality}
+              onValueChange={(value) => onFiltersChange({ ...filters, operationalCriticality: value as DashboardFilters['operationalCriticality'] })}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="low">Baixa</SelectItem>
+                <SelectItem value="medium">Média</SelectItem>
+                <SelectItem value="high">Alta</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Alertas Ativos */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Alertas Ativos</Label>
+            <Select
+              value={filters.hasActiveAlerts}
+              onValueChange={(value) => onFiltersChange({ ...filters, hasActiveAlerts: value as DashboardFilters['hasActiveAlerts'] })}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="yes">Sim</SelectItem>
+                <SelectItem value="no">Não</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Tipo de Vão */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Tipo de Vão</Label>
+            <Select
+              value={filters.spanType || 'all'}
+              onValueChange={(value) => onFiltersChange({ ...filters, spanType: value === 'all' ? '' : value })}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {filterOptions.spanTypes.map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Tipo de Viga */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Tipo de Viga</Label>
+            <Select
+              value={filters.beamType || 'all'}
+              onValueChange={(value) => onFiltersChange({ ...filters, beamType: value === 'all' ? '' : value })}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {filterOptions.beamTypes.map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Intervalo de Km */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Intervalo de Km</Label>
+            <div className="flex gap-1">
+              <Input
+                type="number"
+                placeholder="Inicial"
+                value={filters.kmRange[0] || ''}
+                onChange={(e) => onFiltersChange({ ...filters, kmRange: [Number(e.target.value) || 0, filters.kmRange[1]] })}
+                className="h-9 text-xs"
+              />
+              <Input
+                type="number"
+                placeholder="Final"
+                value={filters.kmRange[1] || ''}
+                onChange={(e) => onFiltersChange({ ...filters, kmRange: [filters.kmRange[0], Number(e.target.value) || 200] })}
+                className="h-9 text-xs"
+              />
             </div>
-          </SheetContent>
-        </Sheet>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { getBridgesByCompany } from '@/data/mockData';
 import { CompanySidebar } from '@/components/layout/CompanySidebar';
 import { BridgeCard } from '@/components/dashboard/BridgeCard';
 import { DashboardFiltersComponent } from '@/components/dashboard/DashboardFilters';
+import { DashboardCharts } from '@/components/dashboard/DashboardCharts';
 import { Activity, AlertTriangle, Building2 } from 'lucide-react';
 
 const defaultFilters: DashboardFilters = {
@@ -11,11 +12,13 @@ const defaultFilters: DashboardFilters = {
   structuralStatus: 'all',
   operationalCriticality: 'all',
   concession: '',
+  rodovia: '',
+  typology: '',
   beamType: '',
   spanType: '',
   material: '',
   kmRange: [0, 200],
-  hasActiveAlerts: null,
+  hasActiveAlerts: 'all',
   companyId: 'all',
 };
 
@@ -23,8 +26,10 @@ export default function Dashboard() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
   const [filters, setFilters] = useState<DashboardFilters>(defaultFilters);
 
+  const allBridges = useMemo(() => getBridgesByCompany(selectedCompanyId), [selectedCompanyId]);
+
   const bridges = useMemo(() => {
-    let result = getBridgesByCompany(selectedCompanyId);
+    let result = [...allBridges];
 
     // Apply search filter
     if (filters.search) {
@@ -73,16 +78,27 @@ export default function Dashboard() {
     );
 
     // Apply alerts filter
-    if (filters.hasActiveAlerts !== null) {
-      result = result.filter((b) => b.hasActiveAlerts === filters.hasActiveAlerts);
+    if (filters.hasActiveAlerts !== 'all') {
+      result = result.filter((b) => 
+        filters.hasActiveAlerts === 'yes' ? b.hasActiveAlerts : !b.hasActiveAlerts
+      );
+    }
+
+    // Apply typology filter
+    if (filters.typology) {
+      result = result.filter((b) => b.typology === filters.typology);
+    }
+
+    // Apply rodovia filter
+    if (filters.rodovia) {
+      result = result.filter((b) => b.rodovia === filters.rodovia);
     }
 
     return result;
-  }, [selectedCompanyId, filters]);
+  }, [allBridges, filters]);
 
   // Stats
   const stats = useMemo(() => {
-    const allBridges = getBridgesByCompany(selectedCompanyId);
     return {
       total: allBridges.length,
       normal: allBridges.filter((b) => b.structuralStatus === 'normal').length,
@@ -90,7 +106,20 @@ export default function Dashboard() {
       critical: allBridges.filter((b) => b.structuralStatus === 'critical').length,
       withAlerts: allBridges.filter((b) => b.hasActiveAlerts).length,
     };
-  }, [selectedCompanyId]);
+  }, [allBridges]);
+
+  // Chart click handlers
+  const handleFilterByTypology = (typology: string) => {
+    setFilters((prev) => ({ ...prev, typology: typology as DashboardFilters['typology'] }));
+  };
+
+  const handleFilterBySpanType = (spanType: string) => {
+    setFilters((prev) => ({ ...prev, spanType }));
+  };
+
+  const handleFilterByBeamType = (beamType: string) => {
+    setFilters((prev) => ({ ...prev, beamType }));
+  };
 
   return (
     <div className="flex flex-1">
@@ -164,6 +193,16 @@ export default function Dashboard() {
           <DashboardFiltersComponent filters={filters} onFiltersChange={setFilters} />
         </div>
 
+        {/* Distribution Charts */}
+        <div className="mb-6">
+          <DashboardCharts 
+            bridges={allBridges}
+            onFilterByTypology={handleFilterByTypology}
+            onFilterBySpanType={handleFilterBySpanType}
+            onFilterByBeamType={handleFilterByBeamType}
+          />
+        </div>
+
         {/* Results Info */}
         <div className="mb-4 flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
@@ -173,7 +212,7 @@ export default function Dashboard() {
 
         {/* Bridge Cards Grid */}
         {bridges.length > 0 ? (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
             {bridges.map((bridge) => (
               <BridgeCard key={bridge.id} bridge={bridge} />
             ))}
