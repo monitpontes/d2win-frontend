@@ -145,3 +145,29 @@
     background: hsl(var(--muted-foreground) / 0.5);
   }
 }
+
+/* Leaflet map custom styles */
+.leaflet-container {
+  font-family: inherit;
+  z-index: 1;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 0.75rem;
+  padding: 0;
+  overflow: hidden;
+}
+
+.leaflet-popup-content {
+  margin: 0;
+  min-width: 280px;
+}
+
+.leaflet-popup-tip {
+  background: hsl(var(--card));
+}
+
+.custom-marker {
+  background: transparent;
+  border: none;
+}

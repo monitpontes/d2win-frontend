@@ -8,6 +8,7 @@ import { DashboardCharts } from '@/components/dashboard/DashboardCharts';
 import { KPISummaryCards } from '@/components/dashboard/KPISummaryCards';
 import { OperationalDashboard } from '@/components/dashboard/OperationalDashboard';
 import { InterventionsSchedule } from '@/components/dashboard/InterventionsSchedule';
+import { BridgesMap } from '@/components/dashboard/BridgesMap';
 import { Activity, AlertTriangle, Building2 } from 'lucide-react';
 
 const defaultFilters: DashboardFilters = {
@@ -208,6 +209,11 @@ export default function Dashboard() {
         {/* Filters */}
         <div className="mb-6">
           <DashboardFiltersComponent filters={filters} onFiltersChange={setFilters} />
+        </div>
+
+        {/* Interactive Map */}
+        <div className="mb-6">
+          <BridgesMap bridges={allBridges} filters={filters} onFiltersChange={setFilters} />
         </div>
 
         {/* Distribution Charts */}

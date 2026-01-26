@@ -103,6 +103,7 @@ export const mockBridges: Bridge[] = [
     hasActiveAlerts: true,
     lastUpdate: '2026-01-19T07:59:38Z',
     image: 'https://images.unsplash.com/photo-1545296664-39db56ad95bd?w=800',
+    coordinates: { lat: -23.5505, lng: -46.6333 },
   },
   {
     id: 'bridge-2',
@@ -124,6 +125,7 @@ export const mockBridges: Bridge[] = [
     hasActiveAlerts: true,
     lastUpdate: '2026-01-19T05:18:55Z',
     image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=800',
+    coordinates: { lat: -23.5629, lng: -46.6544 },
   },
   {
     id: 'bridge-3',
@@ -145,6 +147,7 @@ export const mockBridges: Bridge[] = [
     hasActiveAlerts: true,
     lastUpdate: '2026-01-18T03:02:15Z',
     image: 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800',
+    coordinates: { lat: -23.5875, lng: -46.6580 },
   },
   {
     id: 'bridge-4',
@@ -166,6 +169,7 @@ export const mockBridges: Bridge[] = [
     hasActiveAlerts: false,
     lastUpdate: new Date().toISOString(),
     image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800',
+    coordinates: { lat: -23.6105, lng: -46.6970 },
   },
   {
     id: 'bridge-5',
@@ -187,6 +191,7 @@ export const mockBridges: Bridge[] = [
     hasActiveAlerts: false,
     lastUpdate: new Date().toISOString(),
     image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800',
+    coordinates: { lat: -22.9071, lng: -47.0628 },
   },
   {
     id: 'bridge-6',
@@ -208,6 +213,7 @@ export const mockBridges: Bridge[] = [
     hasActiveAlerts: true,
     lastUpdate: new Date().toISOString(),
     image: 'https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=800',
+    coordinates: { lat: -22.9068, lng: -43.1729 },
   },
   {
     id: 'bridge-7',
@@ -229,6 +235,7 @@ export const mockBridges: Bridge[] = [
     hasActiveAlerts: false,
     lastUpdate: new Date().toISOString(),
     image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800',
+    coordinates: { lat: -22.8808, lng: -42.0189 },
   },
   {
     id: 'bridge-8',
@@ -250,6 +257,7 @@ export const mockBridges: Bridge[] = [
     hasActiveAlerts: false,
     lastUpdate: new Date().toISOString(),
     image: 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800',
+    coordinates: { lat: -19.9167, lng: -43.9345 },
   },
   {
     id: 'bridge-9',
@@ -271,6 +279,7 @@ export const mockBridges: Bridge[] = [
     hasActiveAlerts: true,
     lastUpdate: new Date().toISOString(),
     image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=800',
+    coordinates: { lat: -25.4284, lng: -49.2733 },
   },
   {
     id: 'bridge-10',
@@ -292,6 +301,7 @@ export const mockBridges: Bridge[] = [
     hasActiveAlerts: false,
     lastUpdate: new Date().toISOString(),
     image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800',
+    coordinates: { lat: -30.0346, lng: -51.2177 },
   },
 ];
 
