@@ -1,10 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import type { DashboardFilters } from '@/types';
 import { getBridgesByCompany } from '@/data/mockData';
 import { CompanySidebar } from '@/components/layout/CompanySidebar';
 import { BridgeCard } from '@/components/dashboard/BridgeCard';
 import { DashboardFiltersComponent } from '@/components/dashboard/DashboardFilters';
 import { DashboardCharts } from '@/components/dashboard/DashboardCharts';
+import { KPISummaryCards } from '@/components/dashboard/KPISummaryCards';
+import { OperationalDashboard } from '@/components/dashboard/OperationalDashboard';
+import { InterventionsSchedule } from '@/components/dashboard/InterventionsSchedule';
 import { Activity, AlertTriangle, Building2 } from 'lucide-react';
 
 const defaultFilters: DashboardFilters = {
@@ -25,6 +28,9 @@ const defaultFilters: DashboardFilters = {
 export default function Dashboard() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
   const [filters, setFilters] = useState<DashboardFilters>(defaultFilters);
+
+  const operationalRef = useRef<HTMLDivElement>(null);
+  const interventionsRef = useRef<HTMLDivElement>(null);
 
   const allBridges = useMemo(() => getBridgesByCompany(selectedCompanyId), [selectedCompanyId]);
 
@@ -121,6 +127,12 @@ export default function Dashboard() {
     setFilters((prev) => ({ ...prev, beamType }));
   };
 
+  // Navigate to sections
+  const handleNavigateToSection = (section: 'operational' | 'interventions') => {
+    const ref = section === 'operational' ? operationalRef : interventionsRef;
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div className="flex flex-1">
       <CompanySidebar
@@ -188,6 +200,11 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* KPI Summary Cards - Dashboard Operacional e Intervenções */}
+        <div className="mb-6">
+          <KPISummaryCards onNavigateToSection={handleNavigateToSection} />
+        </div>
+
         {/* Filters */}
         <div className="mb-6">
           <DashboardFiltersComponent filters={filters} onFiltersChange={setFilters} />
@@ -226,6 +243,16 @@ export default function Dashboard() {
             </p>
           </div>
         )}
+
+        {/* Operational Dashboard Section */}
+        <div ref={operationalRef} className="mt-10 pt-6 border-t">
+          <OperationalDashboard />
+        </div>
+
+        {/* Interventions Schedule Section */}
+        <div ref={interventionsRef} className="mt-8">
+          <InterventionsSchedule />
+        </div>
       </main>
     </div>
   );

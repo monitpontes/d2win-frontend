@@ -158,7 +158,21 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
 
   return (
     <Card className="overflow-hidden transition-all hover:shadow-lg flex flex-col">
-      {/* Header with location and status */}
+      {/* Bridge Image Header */}
+      {bridge.image && (
+        <div className="relative h-36 w-full overflow-hidden">
+          <img
+            src={bridge.image}
+            alt={bridge.name}
+            className="h-full w-full object-cover"
+          />
+          <Badge className={cn('absolute top-2 right-2', statusConfig.className)}>
+            {statusConfig.label}
+          </Badge>
+        </div>
+      )}
+
+      {/* Header with name and typology */}
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -170,13 +184,29 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
               <span className="line-clamp-1">{bridge.location}</span>
             </div>
           </div>
-          <Badge className={cn('flex-shrink-0', statusConfig.className)}>
-            {statusConfig.label}
+          <Badge variant="outline" className="flex-shrink-0">
+            {bridge.typology}
           </Badge>
         </div>
 
+        {/* Specs Row */}
+        <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t">
+          <div>
+            <p className="text-xs text-muted-foreground">Comprimento</p>
+            <p className="text-sm font-medium">{bridge.length}m</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Material</p>
+            <p className="text-sm font-medium line-clamp-1">{bridge.material}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Apoios</p>
+            <p className="text-sm font-medium">{bridge.supportCount || 4}</p>
+          </div>
+        </div>
+
         {/* Criticality Badge */}
-        <div className="mt-2">
+        <div className="mt-3">
           <span className="text-xs text-muted-foreground mr-1.5">Criticidade</span>
           <Badge variant="secondary" className={cn('text-xs', criticalityConfig.className)}>
             {criticalityConfig.label}

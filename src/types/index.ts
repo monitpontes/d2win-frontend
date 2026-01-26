@@ -49,6 +49,7 @@ export interface Bridge {
   lastUpdate: string;
   image?: string;
   coordinates?: { lat: number; lng: number };
+  supportCount?: number;
 }
 
 // Sensor types
@@ -181,4 +182,34 @@ export interface SystemStatus {
     timestamp: string;
     severity: EventSeverity;
   }>;
+}
+
+// Structural Problem types
+export type StructuralProblemType = 'Fissura' | 'Corrosão' | 'Desgaste' | 'Trinca' | 'Desplacamento';
+export type StructuralProblemStatus = 'Em Análise' | 'Corrigido' | 'Agendado' | 'Pendente';
+
+export interface StructuralProblem {
+  id: string;
+  bridgeId: string;
+  bridgeName: string;
+  type: StructuralProblemType;
+  description: string;
+  date: string;
+  status: StructuralProblemStatus;
+}
+
+// Intervention types
+export type InterventionPriority = 'Urgente' | 'Média' | 'Baixa';
+export type InterventionType = 'Reparo' | 'Inspeção' | 'Upgrade' | 'Manutenção';
+
+export interface Intervention {
+  id: string;
+  bridgeId: string;
+  bridgeName: string;
+  priority: InterventionPriority;
+  type: InterventionType;
+  description: string;
+  scheduledDate: string;
+  estimatedDuration: string;
+  team: string;
 }
