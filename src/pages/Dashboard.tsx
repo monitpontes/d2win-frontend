@@ -26,6 +26,9 @@ const defaultFilters: DashboardFilters = {
   companyId: 'all',
 };
 
+// Debug flag: temporarily disable map to isolate runtime crash source
+const ENABLE_BRIDGES_MAP = false;
+
 export default function Dashboard() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
   const [filters, setFilters] = useState<DashboardFilters>(defaultFilters);
@@ -212,9 +215,11 @@ export default function Dashboard() {
         </div>
 
         {/* Interactive Map */}
-        <div className="mb-6">
-          <BridgesMap bridges={allBridges} filters={filters} onFiltersChange={setFilters} />
-        </div>
+        {ENABLE_BRIDGES_MAP ? (
+          <div className="mb-6">
+            <BridgesMap bridges={allBridges} filters={filters} onFiltersChange={setFilters} />
+          </div>
+        ) : null}
 
         {/* Distribution Charts */}
         <div className="mb-6">
