@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -61,7 +61,7 @@ const createCustomIcon = (status: Bridge['structuralStatus']) => {
 function MapBounds({ bridges }: { bridges: Bridge[] }) {
   const map = useMap();
 
-  useMemo(() => {
+  useEffect(() => {
     if (bridges.length > 0) {
       const validBridges = bridges.filter(b => b.coordinates);
       if (validBridges.length > 0) {

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import * as React from 'react';
 import type { Bridge } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -21,21 +21,21 @@ const COLORS = {
 const PIE_COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))'];
 
 // Custom tooltip component moved outside to avoid ref issues with Recharts
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="rounded-lg border bg-background p-2 shadow-md">
-        <p className="text-sm font-medium">{label || payload[0]?.name}</p>
-        <p className="text-sm text-muted-foreground">Quantidade: {payload[0]?.value}</p>
-      </div>
-    );
-  }
-  return null;
-};
+const CustomTooltip = React.forwardRef<HTMLDivElement, any>(({ active, payload, label }, ref) => {
+  if (!active || !payload || !payload.length) return null;
+
+  return (
+    <div ref={ref} className="rounded-lg border bg-background p-2 shadow-md">
+      <p className="text-sm font-medium">{label || payload[0]?.name}</p>
+      <p className="text-sm text-muted-foreground">Quantidade: {payload[0]?.value}</p>
+    </div>
+  );
+});
+CustomTooltip.displayName = 'CustomTooltip';
 
 export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanType, onFilterByBeamType }: DashboardChartsProps) {
   // Calculate typology distribution
-  const typologyData = useMemo(() => {
+  const typologyData = React.useMemo(() => {
     const counts: Record<string, number> = {};
     bridges.forEach((bridge) => {
       counts[bridge.typology] = (counts[bridge.typology] || 0) + 1;
@@ -44,7 +44,7 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
   }, [bridges]);
 
   // Calculate span type distribution
-  const spanTypeData = useMemo(() => {
+  const spanTypeData = React.useMemo(() => {
     const counts: Record<string, number> = {};
     bridges.forEach((bridge) => {
       counts[bridge.spanType] = (counts[bridge.spanType] || 0) + 1;
@@ -53,7 +53,7 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
   }, [bridges]);
 
   // Calculate beam type distribution
-  const beamTypeData = useMemo(() => {
+  const beamTypeData = React.useMemo(() => {
     const counts: Record<string, number> = {};
     bridges.forEach((bridge) => {
       counts[bridge.beamType] = (counts[bridge.beamType] || 0) + 1;
