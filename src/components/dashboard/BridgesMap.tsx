@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { Bridge, DashboardFilters } from '@/types';
 import { Loader2 } from 'lucide-react';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const BridgesMapClient = React.lazy(() => import('./BridgesMapClient'));
 
@@ -32,16 +33,33 @@ export function BridgesMap(props: BridgesMapProps) {
   }
 
   return (
-    <React.Suspense
+    <ErrorBoundary
+      onError={(err) => {
+        // eslint-disable-next-line no-console
+        console.error('[BridgesMap] crashed', err);
+      }}
       fallback={
         <div className="rounded-lg border bg-card overflow-hidden">
-          <div className="flex h-[450px] items-center justify-center bg-muted/30">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <div className="flex h-[450px] items-center justify-center bg-muted/30 p-6 text-center">
+            <div>
+              <p className="text-sm font-medium text-foreground">Não foi possível carregar o mapa.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Recarregue a página para tentar novamente.</p>
+            </div>
           </div>
         </div>
       }
     >
-      <BridgesMapClient {...props} />
-    </React.Suspense>
+      <React.Suspense
+        fallback={
+          <div className="rounded-lg border bg-card overflow-hidden">
+            <div className="flex h-[450px] items-center justify-center bg-muted/30">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          </div>
+        }
+      >
+        <BridgesMapClient {...props} />
+      </React.Suspense>
+    </ErrorBoundary>
   );
 }
