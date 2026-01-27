@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Bridge, DashboardFilters } from '@/types';
@@ -13,14 +12,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useNavigate } from 'react-router-dom';
-import { ExternalLink, MapPin, Filter, Layers } from 'lucide-react';
+import { ExternalLink, MapPin, Filter, Loader2 } from 'lucide-react';
 
 // Fix Leaflet default marker icon issue
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  iconRetinaUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
 // Custom marker icons based on status
@@ -57,16 +59,31 @@ const createCustomIcon = (status: Bridge['structuralStatus']) => {
   });
 };
 
-// Component to handle map bounds
+// Lazy load MapContainer and related react-leaflet components
+const MapContainerComponent = lazy(() =>
+  import('react-leaflet').then((mod) => ({ default: mod.MapContainer }))
+);
+const TileLayerComponent = lazy(() =>
+  import('react-leaflet').then((mod) => ({ default: mod.TileLayer }))
+);
+const MarkerComponent = lazy(() =>
+  import('react-leaflet').then((mod) => ({ default: mod.Marker }))
+);
+const PopupComponent = lazy(() =>
+  import('react-leaflet').then((mod) => ({ default: mod.Popup }))
+);
+
+// Component to handle map bounds (needs to be imported lazily too)
 function MapBounds({ bridges }: { bridges: Bridge[] }) {
+  const { useMap } = require('react-leaflet');
   const map = useMap();
 
   useEffect(() => {
     if (bridges.length > 0) {
-      const validBridges = bridges.filter(b => b.coordinates);
+      const validBridges = bridges.filter((b) => b.coordinates);
       if (validBridges.length > 0) {
         const bounds = L.latLngBounds(
-          validBridges.map(b => [b.coordinates!.lat, b.coordinates!.lng])
+          validBridges.map((b) => [b.coordinates!.lat, b.coordinates!.lng])
         );
         map.fitBounds(bounds, { padding: [50, 50] });
       }
@@ -82,14 +99,20 @@ interface BridgesMapProps {
   onFiltersChange: (filters: DashboardFilters) => void;
 }
 
-export function BridgesMap({ bridges, filters, onFiltersChange }: BridgesMapProps) {
+export function BridgesMap({ bridges }: BridgesMapProps) {
   const navigate = useNavigate();
   const [mapFilter, setMapFilter] = useState<'all' | 'normal' | 'alert' | 'critical'>('all');
+  const [isClient, setIsClient] = useState(false);
+
+  // Ensure we only render on client (avoid SSR issues with Leaflet)
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const filteredBridges = useMemo(() => {
-    let result = bridges.filter(b => b.coordinates);
+    let result = bridges.filter((b) => b.coordinates);
     if (mapFilter !== 'all') {
-      result = result.filter(b => b.structuralStatus === mapFilter);
+      result = result.filter((b) => b.structuralStatus === mapFilter);
     }
     return result;
   }, [bridges, mapFilter]);
@@ -166,88 +189,102 @@ export function BridgesMap({ bridges, filters, onFiltersChange }: BridgesMapProp
 
       {/* Map Container */}
       <div className="h-[450px] w-full">
-        <MapContainer
-          center={defaultCenter}
-          zoom={4}
-          style={{ height: '100%', width: '100%' }}
-          scrollWheelZoom={true}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          
-          <MapBounds bridges={filteredBridges} />
-
-          {filteredBridges.map((bridge) => (
-            <Marker
-              key={bridge.id}
-              position={[bridge.coordinates!.lat, bridge.coordinates!.lng]}
-              icon={createCustomIcon(bridge.structuralStatus)}
+        {isClient ? (
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center bg-muted/30">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            }
+          >
+            <MapContainerComponent
+              center={defaultCenter}
+              zoom={4}
+              style={{ height: '100%', width: '100%' }}
+              scrollWheelZoom={true}
             >
-              <Popup className="bridge-popup" minWidth={280}>
-                <div className="p-1">
-                  {/* Bridge Image */}
-                  {bridge.image && (
-                    <div className="mb-2 rounded overflow-hidden h-24">
-                      <img
-                        src={bridge.image}
-                        alt={bridge.name}
-                        className="w-full h-full object-cover"
-                      />
+              <TileLayerComponent
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+
+              <MapBounds bridges={filteredBridges} />
+
+              {filteredBridges.map((bridge) => (
+                <MarkerComponent
+                  key={bridge.id}
+                  position={[bridge.coordinates!.lat, bridge.coordinates!.lng]}
+                  icon={createCustomIcon(bridge.structuralStatus)}
+                >
+                  <PopupComponent className="bridge-popup" minWidth={280}>
+                    <div className="p-1">
+                      {/* Bridge Image */}
+                      {bridge.image && (
+                        <div className="mb-2 rounded overflow-hidden h-24">
+                          <img
+                            src={bridge.image}
+                            alt={bridge.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+
+                      {/* Bridge Info */}
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between">
+                          <h4 className="font-semibold text-foreground">{bridge.name}</h4>
+                          <Badge variant={getStatusBadgeVariant(bridge.structuralStatus)}>
+                            {getStatusLabel(bridge.structuralStatus)}
+                          </Badge>
+                        </div>
+
+                        <p className="text-sm text-muted-foreground">{bridge.location}</p>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <span className="text-muted-foreground">Tipologia:</span>
+                            <span className="ml-1 font-medium">{bridge.typology}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Rodovia:</span>
+                            <span className="ml-1 font-medium">{bridge.rodovia}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">KM:</span>
+                            <span className="ml-1 font-medium">{bridge.km}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Sensores:</span>
+                            <span className="ml-1 font-medium">{bridge.sensorCount}</span>
+                          </div>
+                        </div>
+
+                        {bridge.hasActiveAlerts && (
+                          <Badge variant="destructive" className="text-xs">
+                            Alertas Ativos
+                          </Badge>
+                        )}
+
+                        <Button
+                          size="sm"
+                          className="w-full mt-2"
+                          onClick={() => navigate(`/bridge/${bridge.id}`)}
+                        >
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Ver Detalhes
+                        </Button>
+                      </div>
                     </div>
-                  )}
-
-                  {/* Bridge Info */}
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between">
-                      <h4 className="font-semibold text-foreground">{bridge.name}</h4>
-                      <Badge variant={getStatusBadgeVariant(bridge.structuralStatus)}>
-                        {getStatusLabel(bridge.structuralStatus)}
-                      </Badge>
-                    </div>
-
-                    <p className="text-sm text-muted-foreground">{bridge.location}</p>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-muted-foreground">Tipologia:</span>
-                        <span className="ml-1 font-medium">{bridge.typology}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Rodovia:</span>
-                        <span className="ml-1 font-medium">{bridge.rodovia}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">KM:</span>
-                        <span className="ml-1 font-medium">{bridge.km}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Sensores:</span>
-                        <span className="ml-1 font-medium">{bridge.sensorCount}</span>
-                      </div>
-                    </div>
-
-                    {bridge.hasActiveAlerts && (
-                      <Badge variant="destructive" className="text-xs">
-                        Alertas Ativos
-                      </Badge>
-                    )}
-
-                    <Button
-                      size="sm"
-                      className="w-full mt-2"
-                      onClick={() => navigate(`/bridge/${bridge.id}`)}
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Ver Detalhes
-                    </Button>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-        </MapContainer>
+                  </PopupComponent>
+                </MarkerComponent>
+              ))}
+            </MapContainerComponent>
+          </Suspense>
+        ) : (
+          <div className="flex h-full items-center justify-center bg-muted/30">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        )}
       </div>
     </div>
   );
