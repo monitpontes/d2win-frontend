@@ -20,6 +20,19 @@ const COLORS = {
 
 const PIE_COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))'];
 
+// Custom tooltip component moved outside to avoid ref issues with Recharts
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="rounded-lg border bg-background p-2 shadow-md">
+        <p className="text-sm font-medium">{label || payload[0]?.name}</p>
+        <p className="text-sm text-muted-foreground">Quantidade: {payload[0]?.value}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
 export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanType, onFilterByBeamType }: DashboardChartsProps) {
   // Calculate typology distribution
   const typologyData = useMemo(() => {
@@ -47,18 +60,6 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
     });
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
   }, [bridges]);
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="rounded-lg border bg-background p-2 shadow-md">
-          <p className="text-sm font-medium">{label || payload[0]?.name}</p>
-          <p className="text-sm text-muted-foreground">Quantidade: {payload[0]?.value}</p>
-        </div>
-      );
-    }
-    return null;
-  };
 
   return (
     <div className="grid gap-4 md:grid-cols-3">
