@@ -10,7 +10,6 @@ import { OperationalDashboard } from '@/components/dashboard/OperationalDashboar
 import { InterventionsSchedule } from '@/components/dashboard/InterventionsSchedule';
 import { BridgesMap } from '@/components/dashboard/BridgesMap';
 import { Activity, AlertTriangle, Building2 } from 'lucide-react';
-
 const defaultFilters: DashboardFilters = {
   search: '',
   structuralStatus: 'all',
@@ -23,84 +22,70 @@ const defaultFilters: DashboardFilters = {
   material: '',
   kmRange: [0, 200],
   hasActiveAlerts: 'all',
-  companyId: 'all',
+  companyId: 'all'
 };
-
 export default function Dashboard() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
   const [filters, setFilters] = useState<DashboardFilters>(defaultFilters);
-
   const operationalRef = useRef<HTMLDivElement>(null);
   const interventionsRef = useRef<HTMLDivElement>(null);
-
   const allBridges = useMemo(() => getBridgesByCompany(selectedCompanyId), [selectedCompanyId]);
-
   const bridges = useMemo(() => {
     let result = [...allBridges];
 
     // Apply search filter
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
-      result = result.filter(
-        (b) =>
-          b.name.toLowerCase().includes(searchLower) ||
-          b.id.toLowerCase().includes(searchLower) ||
-          b.location.toLowerCase().includes(searchLower)
-      );
+      result = result.filter(b => b.name.toLowerCase().includes(searchLower) || b.id.toLowerCase().includes(searchLower) || b.location.toLowerCase().includes(searchLower));
     }
 
     // Apply status filter
     if (filters.structuralStatus !== 'all') {
-      result = result.filter((b) => b.structuralStatus === filters.structuralStatus);
+      result = result.filter(b => b.structuralStatus === filters.structuralStatus);
     }
 
     // Apply criticality filter
     if (filters.operationalCriticality !== 'all') {
-      result = result.filter((b) => b.operationalCriticality === filters.operationalCriticality);
+      result = result.filter(b => b.operationalCriticality === filters.operationalCriticality);
     }
 
     // Apply concession filter
     if (filters.concession) {
-      result = result.filter((b) => b.concession === filters.concession);
+      result = result.filter(b => b.concession === filters.concession);
     }
 
     // Apply beam type filter
     if (filters.beamType) {
-      result = result.filter((b) => b.beamType === filters.beamType);
+      result = result.filter(b => b.beamType === filters.beamType);
     }
 
     // Apply span type filter
     if (filters.spanType) {
-      result = result.filter((b) => b.spanType === filters.spanType);
+      result = result.filter(b => b.spanType === filters.spanType);
     }
 
     // Apply material filter
     if (filters.material) {
-      result = result.filter((b) => b.material === filters.material);
+      result = result.filter(b => b.material === filters.material);
     }
 
     // Apply km range filter
-    result = result.filter(
-      (b) => b.km >= filters.kmRange[0] && b.km <= filters.kmRange[1]
-    );
+    result = result.filter(b => b.km >= filters.kmRange[0] && b.km <= filters.kmRange[1]);
 
     // Apply alerts filter
     if (filters.hasActiveAlerts !== 'all') {
-      result = result.filter((b) => 
-        filters.hasActiveAlerts === 'yes' ? b.hasActiveAlerts : !b.hasActiveAlerts
-      );
+      result = result.filter(b => filters.hasActiveAlerts === 'yes' ? b.hasActiveAlerts : !b.hasActiveAlerts);
     }
 
     // Apply typology filter
     if (filters.typology) {
-      result = result.filter((b) => b.typology === filters.typology);
+      result = result.filter(b => b.typology === filters.typology);
     }
 
     // Apply rodovia filter
     if (filters.rodovia) {
-      result = result.filter((b) => b.rodovia === filters.rodovia);
+      result = result.filter(b => b.rodovia === filters.rodovia);
     }
-
     return result;
   }, [allBridges, filters]);
 
@@ -108,41 +93,49 @@ export default function Dashboard() {
   const stats = useMemo(() => {
     return {
       total: allBridges.length,
-      normal: allBridges.filter((b) => b.structuralStatus === 'normal').length,
-      alert: allBridges.filter((b) => b.structuralStatus === 'alert').length,
-      critical: allBridges.filter((b) => b.structuralStatus === 'critical').length,
-      withAlerts: allBridges.filter((b) => b.hasActiveAlerts).length,
+      normal: allBridges.filter(b => b.structuralStatus === 'normal').length,
+      alert: allBridges.filter(b => b.structuralStatus === 'alert').length,
+      critical: allBridges.filter(b => b.structuralStatus === 'critical').length,
+      withAlerts: allBridges.filter(b => b.hasActiveAlerts).length
     };
   }, [allBridges]);
 
   // Chart click handlers
   const handleFilterByTypology = (typology: string) => {
-    setFilters((prev) => ({ ...prev, typology: typology as DashboardFilters['typology'] }));
+    setFilters(prev => ({
+      ...prev,
+      typology: typology as DashboardFilters['typology']
+    }));
   };
-
   const handleFilterBySpanType = (spanType: string) => {
-    setFilters((prev) => ({ ...prev, spanType }));
+    setFilters(prev => ({
+      ...prev,
+      spanType
+    }));
   };
-
   const handleFilterByBeamType = (beamType: string) => {
-    setFilters((prev) => ({ ...prev, beamType }));
+    setFilters(prev => ({
+      ...prev,
+      beamType
+    }));
   };
 
   // Navigate to sections
   const handleNavigateToSection = (section: 'operational' | 'interventions') => {
     const ref = section === 'operational' ? operationalRef : interventionsRef;
-    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    ref.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
   };
-
-  return (
-    <div className="flex flex-1">
-      <CompanySidebar
-        selectedCompanyId={selectedCompanyId}
-        onSelectCompany={(id) => {
-          setSelectedCompanyId(id);
-          setFilters({ ...filters, companyId: id });
-        }}
-      />
+  return <div className="flex flex-1">
+      <CompanySidebar selectedCompanyId={selectedCompanyId} onSelectCompany={id => {
+      setSelectedCompanyId(id);
+      setFilters({
+        ...filters,
+        companyId: id
+      });
+    }} />
 
       <main className="flex-1 overflow-auto p-4">
         {/* Header compacto */}
@@ -156,7 +149,7 @@ export default function Dashboard() {
         {/* Stats + KPIs + Map - tudo em uma linha */}
         <div className="mb-4 grid gap-3 grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
           {/* Stats Cards - mais compactos */}
-          <div className="rounded-lg border bg-card p-3">
+          <div className="rounded-lg border bg-card p-3 py-[20px]">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                 <Building2 className="h-4 w-4 text-primary" />
@@ -167,7 +160,7 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-3">
+          <div className="rounded-lg border bg-card p-3 py-[20px]">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10">
                 <Activity className="h-4 w-4 text-success" />
@@ -178,7 +171,7 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-3">
+          <div className="rounded-lg border bg-card p-3 py-[20px]">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10">
                 <AlertTriangle className="h-4 w-4 text-warning" />
@@ -189,7 +182,7 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-3">
+          <div className="rounded-lg border bg-card p-3 py-[20px]">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10">
                 <AlertTriangle className="h-4 w-4 text-destructive" />
@@ -214,12 +207,7 @@ export default function Dashboard() {
 
         {/* Distribution Charts */}
         <div className="mb-4">
-          <DashboardCharts 
-            bridges={allBridges}
-            onFilterByTypology={handleFilterByTypology}
-            onFilterBySpanType={handleFilterBySpanType}
-            onFilterByBeamType={handleFilterByBeamType}
-          />
+          <DashboardCharts bridges={allBridges} onFilterByTypology={handleFilterByTypology} onFilterBySpanType={handleFilterBySpanType} onFilterByBeamType={handleFilterByBeamType} />
         </div>
 
         {/* Filters - após os gráficos */}
@@ -235,21 +223,15 @@ export default function Dashboard() {
         </div>
 
         {/* Bridge Cards Grid */}
-        {bridges.length > 0 ? (
-          <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
-            {bridges.map((bridge) => (
-              <BridgeCard key={bridge.id} bridge={bridge} />
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center rounded-lg border bg-card p-12 text-center">
+        {bridges.length > 0 ? <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+            {bridges.map(bridge => <BridgeCard key={bridge.id} bridge={bridge} />)}
+          </div> : <div className="flex flex-col items-center justify-center rounded-lg border bg-card p-12 text-center">
             <Building2 className="mb-4 h-12 w-12 text-muted-foreground/50" />
             <h3 className="text-lg font-medium">Nenhum ativo encontrado</h3>
             <p className="text-sm text-muted-foreground">
               Tente ajustar os filtros para ver mais resultados
             </p>
-          </div>
-        )}
+          </div>}
 
         {/* Operational Dashboard Section */}
         <div ref={operationalRef} className="mt-10 pt-6 border-t">
@@ -261,6 +243,5 @@ export default function Dashboard() {
           <InterventionsSchedule />
         </div>
       </main>
-    </div>
-  );
+    </div>;
 }
