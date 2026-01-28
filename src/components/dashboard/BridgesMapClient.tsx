@@ -17,7 +17,7 @@ export default function BridgesMapClient({ compact }: BridgesMapProps) {
     <React.Suspense
       fallback={
         <div className="rounded-lg border bg-card overflow-hidden h-full">
-          <div className={`flex ${compact ? 'h-[280px]' : 'h-[400px]'} items-center justify-center bg-muted/30`}>
+          <div className={`flex ${compact ? 'h-[200px]' : 'h-[350px]'} items-center justify-center bg-muted/30`}>
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         </div>

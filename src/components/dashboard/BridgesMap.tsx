@@ -19,7 +19,7 @@ export function BridgesMap({ compact = false }: BridgesMapProps) {
     setMounted(true);
   }, []);
 
-  const mapHeight = compact ? 'h-[280px]' : 'h-[400px]';
+  const mapHeight = compact ? 'h-[200px]' : 'h-[350px]';
 
   if (!mounted) {
     return (

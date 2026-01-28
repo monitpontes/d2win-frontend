@@ -62,15 +62,15 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
   }, [bridges]);
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-3 md:grid-cols-3">
       {/* Typology Pie Chart */}
       <Card className="cursor-pointer hover:shadow-md transition-shadow">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Distribuição por Tipologia do Ativo</CardTitle>
-          <CardDescription>Visão geral dos tipos de estruturas</CardDescription>
+        <CardHeader className="p-3 pb-1">
+          <CardTitle className="text-sm">Distribuição por Tipologia</CardTitle>
+          <CardDescription className="text-xs">Clique para filtrar</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="h-[200px]">
+        <CardContent className="p-3 pt-0">
+          <div className="h-[140px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -78,7 +78,7 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
                   cx="50%"
                   cy="50%"
                   innerRadius={0}
-                  outerRadius={70}
+                  outerRadius={50}
                   dataKey="value"
                   onClick={(data) => onFilterByTypology?.(data.name)}
                   label={({ name, value }) => `${name}: ${value}`}
@@ -97,24 +97,25 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
 
       {/* Span Type Bar Chart */}
       <Card className="cursor-pointer hover:shadow-md transition-shadow">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Distribuição por Tipo de Vão</CardTitle>
-          <CardDescription>Clique para filtrar</CardDescription>
+        <CardHeader className="p-3 pb-1">
+          <CardTitle className="text-sm">Distribuição por Tipo de Vão</CardTitle>
+          <CardDescription className="text-xs">Clique para filtrar</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="h-[200px]">
+        <CardContent className="p-3 pt-0">
+          <div className="h-[140px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={spanTypeData}>
                 <XAxis 
                   dataKey="name" 
-                  tick={{ fontSize: 11 }} 
+                  tick={{ fontSize: 10 }} 
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis 
-                  tick={{ fontSize: 11 }} 
+                  tick={{ fontSize: 10 }} 
                   axisLine={false}
                   tickLine={false}
+                  width={20}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Bar 
@@ -131,24 +132,25 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
 
       {/* Beam Type Bar Chart */}
       <Card className="cursor-pointer hover:shadow-md transition-shadow">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Distribuição por Tipo de Viga</CardTitle>
-          <CardDescription>Clique para filtrar</CardDescription>
+        <CardHeader className="p-3 pb-1">
+          <CardTitle className="text-sm">Distribuição por Tipo de Viga</CardTitle>
+          <CardDescription className="text-xs">Clique para filtrar</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="h-[200px]">
+        <CardContent className="p-3 pt-0">
+          <div className="h-[140px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={beamTypeData}>
                 <XAxis 
                   dataKey="name" 
-                  tick={{ fontSize: 10 }} 
+                  tick={{ fontSize: 9 }} 
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis 
-                  tick={{ fontSize: 11 }} 
+                  tick={{ fontSize: 10 }} 
                   axisLine={false}
                   tickLine={false}
+                  width={20}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Bar 
