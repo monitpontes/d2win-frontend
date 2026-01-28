@@ -144,80 +144,76 @@ export default function Dashboard() {
         }}
       />
 
-      <main className="flex-1 overflow-auto p-6">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-foreground">Dashboard – Ativos</h1>
-          <p className="text-muted-foreground">
+      <main className="flex-1 overflow-auto p-4">
+        {/* Header compacto */}
+        <div className="mb-4">
+          <h1 className="text-xl font-bold text-foreground">Dashboard – Ativos</h1>
+          <p className="text-sm text-muted-foreground">
             Gerencie e monitore suas pontes e viadutos
           </p>
         </div>
 
-        {/* Stats Cards */}
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                <Building2 className="h-5 w-5 text-primary" />
+        {/* Stats + KPIs + Map - tudo em uma linha */}
+        <div className="mb-4 grid gap-3 grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+          {/* Stats Cards - mais compactos */}
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                <Building2 className="h-4 w-4 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.total}</p>
-                <p className="text-sm text-muted-foreground">Total de Ativos</p>
+                <p className="text-xl font-bold">{stats.total}</p>
+                <p className="text-xs text-muted-foreground">Total de Ativos</p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-                <Activity className="h-5 w-5 text-success" />
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10">
+                <Activity className="h-4 w-4 text-success" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.normal}</p>
-                <p className="text-sm text-muted-foreground">Status Normal</p>
+                <p className="text-xl font-bold">{stats.normal}</p>
+                <p className="text-xs text-muted-foreground">Status Normal</p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
-                <AlertTriangle className="h-5 w-5 text-warning" />
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10">
+                <AlertTriangle className="h-4 w-4 text-warning" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.alert}</p>
-                <p className="text-sm text-muted-foreground">Em Alerta</p>
+                <p className="text-xl font-bold">{stats.alert}</p>
+                <p className="text-xs text-muted-foreground">Em Alerta</p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10">
+                <AlertTriangle className="h-4 w-4 text-destructive" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.critical}</p>
-                <p className="text-sm text-muted-foreground">Críticos</p>
+                <p className="text-xl font-bold">{stats.critical}</p>
+                <p className="text-xs text-muted-foreground">Críticos</p>
               </div>
             </div>
+          </div>
+
+          {/* KPI Summary Cards inline */}
+          <div className="col-span-2 lg:col-span-4 xl:col-span-2">
+            <KPISummaryCards onNavigateToSection={handleNavigateToSection} />
           </div>
         </div>
 
-
-        {/* Filters */}
-        <div className="mb-6">
-          <DashboardFiltersComponent filters={filters} onFiltersChange={setFilters} />
-        </div>
-        <div className="mb-6">
-          <DashboardFiltersComponent filters={filters} onFiltersChange={setFilters} />
-        </div>
-
-        {/* Map and KPI Summary in same row */}
-        <div className="mb-6 grid gap-4 lg:grid-cols-2">
-          <KPISummaryCards onNavigateToSection={handleNavigateToSection} />
+        {/* Map - largura total, altura reduzida */}
+        <div className="mb-4">
           <BridgesMap compact />
         </div>
 
         {/* Distribution Charts */}
-        <div className="mb-6">
+        <div className="mb-4">
           <DashboardCharts 
             bridges={allBridges}
             onFilterByTypology={handleFilterByTypology}
@@ -226,8 +222,13 @@ export default function Dashboard() {
           />
         </div>
 
+        {/* Filters - após os gráficos */}
+        <div className="mb-4">
+          <DashboardFiltersComponent filters={filters} onFiltersChange={setFilters} />
+        </div>
+
         {/* Results Info */}
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
             Mostrando {bridges.length} de {stats.total} ativos
           </p>

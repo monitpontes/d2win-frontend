@@ -230,7 +230,7 @@ export default function BridgesMapLeaflet({ compact = false }: BridgesMapProps) 
     }
   };
 
-  const mapHeight = compact ? 'h-[280px]' : 'h-[400px]';
+  const mapHeight = compact ? 'h-[200px]' : 'h-[350px]';
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden h-full">
