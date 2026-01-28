@@ -1,31 +1,30 @@
 import * as React from 'react';
-import type { Bridge, DashboardFilters } from '@/types';
 import { Loader2 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const BridgesMapClient = React.lazy(() => import('./BridgesMapClient'));
 
 interface BridgesMapProps {
-  bridges: Bridge[];
-  filters: DashboardFilters;
-  onFiltersChange: (filters: DashboardFilters) => void;
+  compact?: boolean;
 }
 
 /**
  * Wrapper client-only: evita crashes do React-Leaflet/Leaflet durante o bootstrap.
  * O código do mapa (que importa react-leaflet) fica isolado em BridgesMapClient.
  */
-export function BridgesMap(props: BridgesMapProps) {
+export function BridgesMap({ compact = false }: BridgesMapProps) {
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
 
+  const mapHeight = compact ? 'h-[280px]' : 'h-[400px]';
+
   if (!mounted) {
     return (
-      <div className="rounded-lg border bg-card overflow-hidden">
-        <div className="flex h-[450px] items-center justify-center bg-muted/30">
+      <div className="rounded-lg border bg-card overflow-hidden h-full">
+        <div className={`flex ${mapHeight} items-center justify-center bg-muted/30`}>
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       </div>
@@ -39,8 +38,8 @@ export function BridgesMap(props: BridgesMapProps) {
         console.error('[BridgesMap] crashed', err);
       }}
       fallback={
-        <div className="rounded-lg border bg-card overflow-hidden">
-          <div className="flex h-[450px] items-center justify-center bg-muted/30 p-6 text-center">
+        <div className="rounded-lg border bg-card overflow-hidden h-full">
+          <div className={`flex ${mapHeight} items-center justify-center bg-muted/30 p-6 text-center`}>
             <div>
               <p className="text-sm font-medium text-foreground">Não foi possível carregar o mapa.</p>
               <p className="mt-1 text-sm text-muted-foreground">Recarregue a página para tentar novamente.</p>
@@ -51,14 +50,14 @@ export function BridgesMap(props: BridgesMapProps) {
     >
       <React.Suspense
         fallback={
-          <div className="rounded-lg border bg-card overflow-hidden">
-            <div className="flex h-[450px] items-center justify-center bg-muted/30">
+          <div className="rounded-lg border bg-card overflow-hidden h-full">
+            <div className={`flex ${mapHeight} items-center justify-center bg-muted/30`}>
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           </div>
         }
       >
-        <BridgesMapClient {...props} />
+        <BridgesMapClient compact={compact} />
       </React.Suspense>
     </ErrorBoundary>
   );

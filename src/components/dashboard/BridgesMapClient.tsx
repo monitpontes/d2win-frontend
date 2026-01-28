@@ -1,5 +1,4 @@
 import * as React from 'react';
-import type { Bridge, DashboardFilters } from '@/types';
 import { Loader2 } from 'lucide-react';
 
 /**
@@ -10,23 +9,21 @@ import { Loader2 } from 'lucide-react';
 const BridgesMapLeaflet = React.lazy(() => import('./BridgesMapLeaflet'));
 
 interface BridgesMapProps {
-  bridges: Bridge[];
-  filters: DashboardFilters;
-  onFiltersChange: (filters: DashboardFilters) => void;
+  compact?: boolean;
 }
 
-export default function BridgesMapClient(props: BridgesMapProps) {
+export default function BridgesMapClient({ compact }: BridgesMapProps) {
   return (
     <React.Suspense
       fallback={
-        <div className="rounded-lg border bg-card overflow-hidden">
-          <div className="flex h-[450px] items-center justify-center bg-muted/30">
+        <div className="rounded-lg border bg-card overflow-hidden h-full">
+          <div className={`flex ${compact ? 'h-[280px]' : 'h-[400px]'} items-center justify-center bg-muted/30`}>
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         </div>
       }
     >
-      <BridgesMapLeaflet {...props} />
+      <BridgesMapLeaflet compact={compact} />
     </React.Suspense>
   );
 }

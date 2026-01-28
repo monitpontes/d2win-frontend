@@ -1,18 +1,8 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { Bridge, DashboardFilters } from '@/types';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useNavigate } from 'react-router-dom';
-import { ExternalLink, MapPin, Filter, Layers } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 
 // Fix Leaflet default marker icon issue
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -23,84 +13,17 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
-// Custom marker icons based on status
-const createCustomIcon = (status: Bridge['structuralStatus']) => {
-  const colors = {
-    normal: '#22c55e',
-    alert: '#f59e0b',
-    critical: '#ef4444',
-  };
-
-  return L.divIcon({
-    className: 'custom-marker',
-    html: `
-      <div style="
-        width: 32px;
-        height: 32px;
-        background: ${colors[status]};
-        border-radius: 50% 50% 50% 0;
-        transform: rotate(-45deg);
-        border: 3px solid white;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      ">
-        <svg style="transform: rotate(45deg); width: 14px; height: 14px; color: white;" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-        </svg>
-      </div>
-    `,
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
-    popupAnchor: [0, -32],
-  });
-};
-
 interface BridgesMapProps {
-  bridges: Bridge[];
-  filters: DashboardFilters;
-  onFiltersChange: (filters: DashboardFilters) => void;
+  compact?: boolean;
 }
 
-export default function BridgesMapLeaflet({ bridges }: BridgesMapProps) {
-  const navigate = useNavigate();
+export default function BridgesMapLeaflet({ compact = false }: BridgesMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const kmzLayerRef = useRef<L.LayerGroup | null>(null);
   
-  const [mapFilter, setMapFilter] = useState<'all' | 'normal' | 'alert' | 'critical'>('all');
-  const [showKmz, setShowKmz] = useState(true);
   const [kmzLoaded, setKmzLoaded] = useState(false);
-
-  const filteredBridges = useMemo(() => {
-    let result = bridges.filter((b) => b.coordinates);
-    if (mapFilter !== 'all') result = result.filter((b) => b.structuralStatus === mapFilter);
-    return result;
-  }, [bridges, mapFilter]);
-
-  const getStatusBadgeVariant = (status: Bridge['structuralStatus']) => {
-    switch (status) {
-      case 'critical':
-        return 'destructive';
-      case 'alert':
-        return 'warning' as const;
-      default:
-        return 'success' as const;
-    }
-  };
-
-  const getStatusLabel = (status: Bridge['structuralStatus']) => {
-    switch (status) {
-      case 'critical':
-        return 'Crítico';
-      case 'alert':
-        return 'Alerta';
-      default:
-        return 'Normal';
-    }
-  };
+  const [kmzCount, setKmzCount] = useState(0);
 
   const defaultCenter: [number, number] = [-15.7801, -47.9292];
 
@@ -143,8 +66,7 @@ export default function BridgesMapLeaflet({ bridges }: BridgesMapProps) {
 
     L.control.layers(baseMaps, {}, { position: 'topright' }).addTo(map);
 
-    // Create layer groups
-    markersLayerRef.current = L.layerGroup().addTo(map);
+    // Create KMZ layer group only
     kmzLayerRef.current = L.layerGroup().addTo(map);
 
     mapInstanceRef.current = map;
@@ -290,6 +212,17 @@ export default function BridgesMapLeaflet({ bridges }: BridgesMapProps) {
       }
       
       setKmzLoaded(true);
+      setKmzCount(placemarks.length);
+      
+      // Fit bounds to KMZ data
+      if (kmzGroup && kmzGroup.getLayers().length > 0) {
+        const featureGroup = L.featureGroup(kmzGroup.getLayers());
+        const bounds = featureGroup.getBounds();
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [30, 30] });
+        }
+      }
+      
       console.log(`[KMZ] Loaded ${placemarks.length} placemarks`);
       
     } catch (error) {
@@ -297,164 +230,23 @@ export default function BridgesMapLeaflet({ bridges }: BridgesMapProps) {
     }
   };
 
-  // Update markers when bridges or filter changes
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    const markersLayer = markersLayerRef.current;
-    
-    if (!map || !markersLayer) return;
-    
-    // Clear existing markers
-    markersLayer.clearLayers();
-    
-    // Add bridge markers
-    filteredBridges.forEach((bridge) => {
-      if (!bridge.coordinates) return;
-      
-      const marker = L.marker([bridge.coordinates.lat, bridge.coordinates.lng], {
-        icon: createCustomIcon(bridge.structuralStatus),
-      });
-      
-      const popupContent = `
-        <div style="min-width: 260px; font-family: system-ui, -apple-system, sans-serif;">
-          ${bridge.image ? `<img src="${bridge.image}" alt="${bridge.name}" style="width: 100%; height: 80px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" />` : ''}
-          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
-            <strong style="font-size: 14px;">${bridge.name}</strong>
-            <span style="
-              background: ${bridge.structuralStatus === 'critical' ? '#ef4444' : bridge.structuralStatus === 'alert' ? '#f59e0b' : '#22c55e'};
-              color: white;
-              padding: 2px 8px;
-              border-radius: 9999px;
-              font-size: 11px;
-              font-weight: 500;
-            ">${getStatusLabel(bridge.structuralStatus)}</span>
-          </div>
-          <p style="color: #666; font-size: 12px; margin: 4px 0;">${bridge.location}</p>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px; margin-top: 8px;">
-            <div><span style="color: #888;">Tipologia:</span> <strong>${bridge.typology}</strong></div>
-            <div><span style="color: #888;">Rodovia:</span> <strong>${bridge.rodovia}</strong></div>
-            <div><span style="color: #888;">KM:</span> <strong>${bridge.km}</strong></div>
-            <div><span style="color: #888;">Sensores:</span> <strong>${bridge.sensorCount}</strong></div>
-          </div>
-          ${bridge.hasActiveAlerts ? '<div style="margin-top: 8px;"><span style="background: #ef4444; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Alertas Ativos</span></div>' : ''}
-        </div>
-      `;
-      
-      marker.bindPopup(popupContent, { minWidth: 280 });
-      
-      // Add click to navigate
-      marker.on('popupopen', () => {
-        const popup = marker.getPopup();
-        if (popup) {
-          const container = popup.getElement();
-          if (container) {
-            // Add navigation button after popup opens
-            setTimeout(() => {
-              const btn = container.querySelector('.bridge-nav-btn');
-              if (btn) {
-                btn.addEventListener('click', () => navigate(`/bridge/${bridge.id}`));
-              }
-            }, 0);
-          }
-        }
-      });
-      
-      markersLayer.addLayer(marker);
-    });
-    
-    // Fit bounds
-    if (filteredBridges.length > 0) {
-      const bounds = L.latLngBounds(
-        filteredBridges.map((b) => [b.coordinates!.lat, b.coordinates!.lng])
-      );
-      map.fitBounds(bounds, { padding: [50, 50] });
-    }
-  }, [filteredBridges, navigate]);
-
-  // Toggle KMZ visibility
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    const kmzLayer = kmzLayerRef.current;
-    
-    if (!map || !kmzLayer) return;
-    
-    if (showKmz) {
-      if (!map.hasLayer(kmzLayer)) {
-        kmzLayer.addTo(map);
-      }
-    } else {
-      if (map.hasLayer(kmzLayer)) {
-        map.removeLayer(kmzLayer);
-      }
-    }
-  }, [showKmz]);
+  const mapHeight = compact ? 'h-[280px]' : 'h-[400px]';
 
   return (
-    <div className="rounded-lg border bg-card overflow-hidden">
-      <div className="flex items-center justify-between border-b p-4">
+    <div className="rounded-lg border bg-card overflow-hidden h-full">
+      <div className="flex items-center justify-between border-b p-3">
         <div className="flex items-center gap-2">
-          <MapPin className="h-5 w-5 text-primary" />
-          <h3 className="font-semibold text-foreground">Mapa de Ativos</h3>
-          <Badge variant="outline" className="ml-2">
-            {filteredBridges.length} ativos
-          </Badge>
+          <MapPin className="h-4 w-4 text-primary" />
+          <h3 className="font-semibold text-foreground text-sm">Localização dos Ativos</h3>
           {kmzLoaded && (
-            <Badge variant="secondary" className="ml-1">
-              + KMZ
+            <Badge variant="secondary" className="text-xs">
+              {kmzCount} pontos
             </Badge>
           )}
         </div>
-
-        <div className="flex items-center gap-2">
-          {kmzLoaded && (
-            <Button
-              variant={showKmz ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setShowKmz(!showKmz)}
-              className="h-8"
-            >
-              <Layers className="h-4 w-4 mr-1" />
-              KMZ
-            </Button>
-          )}
-          
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <Select value={mapFilter} onValueChange={(v) => setMapFilter(v as typeof mapFilter)}>
-            <SelectTrigger className="w-[140px] h-8">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="normal">Normal</SelectItem>
-              <SelectItem value="alert">Alerta</SelectItem>
-              <SelectItem value="critical">Crítico</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
-      <div className="flex items-center gap-4 px-4 py-2 bg-muted/50 border-b text-sm">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-success" />
-          <span className="text-muted-foreground">Normal</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-warning" />
-          <span className="text-muted-foreground">Alerta</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-destructive" />
-          <span className="text-muted-foreground">Crítico</span>
-        </div>
-        {kmzLoaded && (
-          <div className="flex items-center gap-1.5 ml-4">
-            <div className="w-3 h-3 rounded-full bg-blue-500" />
-            <span className="text-muted-foreground">KMZ</span>
-          </div>
-        )}
-      </div>
-
-      <div ref={mapContainerRef} className="h-[450px] w-full" />
+      <div ref={mapContainerRef} className={`${mapHeight} w-full`} />
     </div>
   );
 }
