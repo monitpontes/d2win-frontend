@@ -201,19 +201,19 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* KPI Summary Cards - Dashboard Operacional e Intervenções */}
-        <div className="mb-6">
-          <KPISummaryCards onNavigateToSection={handleNavigateToSection} />
-        </div>
 
         {/* Filters */}
         <div className="mb-6">
           <DashboardFiltersComponent filters={filters} onFiltersChange={setFilters} />
         </div>
-
-        {/* Interactive Map */}
         <div className="mb-6">
-          <BridgesMap bridges={allBridges} filters={filters} onFiltersChange={setFilters} />
+          <DashboardFiltersComponent filters={filters} onFiltersChange={setFilters} />
+        </div>
+
+        {/* Map and KPI Summary in same row */}
+        <div className="mb-6 grid gap-4 lg:grid-cols-2">
+          <KPISummaryCards onNavigateToSection={handleNavigateToSection} />
+          <BridgesMap compact />
         </div>
 
         {/* Distribution Charts */}
