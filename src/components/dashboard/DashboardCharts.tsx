@@ -10,15 +10,16 @@ interface DashboardChartsProps {
   onFilterByBeamType?: (beamType: string) => void;
 }
 
-const COLORS = {
-  primary: 'hsl(var(--primary))',
-  secondary: 'hsl(var(--chart-2))',
-  tertiary: 'hsl(var(--chart-3))',
-  quaternary: 'hsl(var(--chart-4))',
-  quinary: 'hsl(var(--chart-5))',
-};
+// Neutral color palette for charts
+const NEUTRAL_COLORS = [
+  'hsl(220, 15%, 45%)',
+  'hsl(220, 10%, 60%)',
+  'hsl(220, 10%, 75%)',
+  'hsl(220, 15%, 35%)',
+  'hsl(220, 10%, 50%)',
+];
 
-const PIE_COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))'];
+const PIE_COLORS = NEUTRAL_COLORS.slice(0, 3);
 
 // Custom tooltip component moved outside to avoid ref issues with Recharts
 const CustomTooltip = React.forwardRef<HTMLDivElement, any>(({ active, payload, label }, ref) => {
@@ -120,7 +121,7 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
                 <Tooltip content={<CustomTooltip />} />
                 <Bar 
                   dataKey="value" 
-                  fill="hsl(var(--primary))"
+                  fill="hsl(220, 15%, 50%)"
                   radius={[4, 4, 0, 0]}
                   onClick={(data) => onFilterBySpanType?.(data.name)}
                 />
@@ -155,7 +156,7 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
                 <Tooltip content={<CustomTooltip />} />
                 <Bar 
                   dataKey="value" 
-                  fill="hsl(var(--chart-3))"
+                  fill="hsl(220, 10%, 65%)"
                   radius={[4, 4, 0, 0]}
                   onClick={(data) => onFilterByBeamType?.(data.name)}
                 />

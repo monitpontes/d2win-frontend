@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import type { Bridge, Sensor } from '@/types';
+import type { Bridge, Sensor, StructuralStatus } from '@/types';
+import { structuralStatusLabels } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -121,10 +122,12 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
   , [sensorReadings]);
 
   const getStatusConfig = (status: Bridge['structuralStatus']) => {
-    const configs = {
-      normal: { label: 'Normal', className: 'bg-success text-success-foreground' },
-      alert: { label: 'Alerta', className: 'bg-warning text-warning-foreground' },
-      critical: { label: 'Crítico', className: 'bg-destructive text-destructive-foreground' },
+    const configs: Record<StructuralStatus, { label: string; className: string }> = {
+      operacional: { label: structuralStatusLabels.operacional, className: 'bg-success text-success-foreground' },
+      atencao: { label: structuralStatusLabels.atencao, className: 'bg-warning text-warning-foreground' },
+      restricoes: { label: structuralStatusLabels.restricoes, className: 'bg-orange-500 text-white' },
+      critico: { label: structuralStatusLabels.critico, className: 'bg-destructive text-destructive-foreground' },
+      interdicao: { label: structuralStatusLabels.interdicao, className: 'bg-destructive text-destructive-foreground' },
     };
     return configs[status];
   };
