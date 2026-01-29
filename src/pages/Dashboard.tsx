@@ -150,70 +150,70 @@ export default function Dashboard() {
         </div>
 
         {/* Stats Cards Row */}
-        <div className="mb-3 grid gap-2 grid-cols-3 lg:grid-cols-6">
-          <div className="rounded-lg border bg-card p-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-                <Building2 className="h-3.5 w-3.5 text-primary" />
+        <div className="mb-3 grid gap-3 grid-cols-3 lg:grid-cols-6">
+          <div className="rounded-lg border bg-card p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                <Building2 className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-lg font-bold">{stats.total}</p>
-                <p className="text-[10px] text-muted-foreground">Total</p>
+                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-xs text-muted-foreground">Total</p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-success/10">
-                <CheckCircle className="h-3.5 w-3.5 text-success" />
+          <div className="rounded-lg border bg-card p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+                <CheckCircle className="h-5 w-5 text-success" />
               </div>
               <div>
-                <p className="text-lg font-bold">{stats.operacional}</p>
-                <p className="text-[10px] text-muted-foreground">Operacional</p>
+                <p className="text-2xl font-bold">{stats.operacional}</p>
+                <p className="text-xs text-muted-foreground">Operacional</p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-warning/10">
-                <Activity className="h-3.5 w-3.5 text-warning" />
+          <div className="rounded-lg border bg-card p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+                <Activity className="h-5 w-5 text-warning" />
               </div>
               <div>
-                <p className="text-lg font-bold">{stats.atencao}</p>
-                <p className="text-[10px] text-muted-foreground">C/ Atenção</p>
+                <p className="text-2xl font-bold">{stats.atencao}</p>
+                <p className="text-xs text-muted-foreground">C/ Atenção</p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/10">
-                <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
+          <div className="rounded-lg border bg-card p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
+                <AlertTriangle className="h-5 w-5 text-orange-500" />
               </div>
               <div>
-                <p className="text-lg font-bold">{stats.restricoes}</p>
-                <p className="text-[10px] text-muted-foreground">C/ Restrições</p>
+                <p className="text-2xl font-bold">{stats.restricoes}</p>
+                <p className="text-xs text-muted-foreground">C/ Restrições</p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-destructive/10">
-                <ShieldAlert className="h-3.5 w-3.5 text-destructive" />
+          <div className="rounded-lg border bg-card p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+                <ShieldAlert className="h-5 w-5 text-destructive" />
               </div>
               <div>
-                <p className="text-lg font-bold">{stats.critico}</p>
-                <p className="text-[10px] text-muted-foreground">Crítico</p>
+                <p className="text-2xl font-bold">{stats.critico}</p>
+                <p className="text-xs text-muted-foreground">Crítico</p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-destructive/10">
-                <Ban className="h-3.5 w-3.5 text-destructive" />
+          <div className="rounded-lg border bg-card p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+                <Ban className="h-5 w-5 text-destructive" />
               </div>
               <div>
-                <p className="text-lg font-bold">{stats.interdicao}</p>
-                <p className="text-[10px] text-muted-foreground">Interdição</p>
+                <p className="text-2xl font-bold">{stats.interdicao}</p>
+                <p className="text-xs text-muted-foreground">Interdição</p>
               </div>
             </div>
           </div>
