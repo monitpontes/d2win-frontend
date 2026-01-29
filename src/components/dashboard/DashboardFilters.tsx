@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import type { DashboardFilters } from '@/types';
+import { structuralStatusLabels } from '@/types';
 import { mockBridges } from '@/data/mockData';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -199,9 +200,9 @@ export function DashboardFiltersComponent({ filters, onFiltersChange }: Dashboar
               </Select>
             </div>
 
-            {/* Status Estrutural */}
+            {/* Status Operacional */}
             <div className="space-y-1.5">
-              <Label className="text-sm text-muted-foreground">Status Estrutural</Label>
+              <Label className="text-sm text-muted-foreground">Status Operacional</Label>
               <Select
                 value={filters.structuralStatus}
                 onValueChange={(value) => onFiltersChange({ ...filters, structuralStatus: value as DashboardFilters['structuralStatus'] })}
@@ -211,9 +212,11 @@ export function DashboardFiltersComponent({ filters, onFiltersChange }: Dashboar
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="alert">Alerta</SelectItem>
-                  <SelectItem value="critical">Crítico</SelectItem>
+                  <SelectItem value="operacional">{structuralStatusLabels.operacional}</SelectItem>
+                  <SelectItem value="atencao">{structuralStatusLabels.atencao}</SelectItem>
+                  <SelectItem value="restricoes">{structuralStatusLabels.restricoes}</SelectItem>
+                  <SelectItem value="critico">{structuralStatusLabels.critico}</SelectItem>
+                  <SelectItem value="interdicao">{structuralStatusLabels.interdicao}</SelectItem>
                 </SelectContent>
               </Select>
             </div>

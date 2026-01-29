@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
-import type { DashboardFilters } from '@/types';
+import type { DashboardFilters, StructuralStatus } from '@/types';
+import { structuralStatusLabels } from '@/types';
 import { getBridgesByCompany } from '@/data/mockData';
 import { CompanySidebar } from '@/components/layout/CompanySidebar';
 import { BridgeCard } from '@/components/dashboard/BridgeCard';
@@ -9,7 +10,7 @@ import { KPISummaryCards } from '@/components/dashboard/KPISummaryCards';
 import { OperationalDashboard } from '@/components/dashboard/OperationalDashboard';
 import { InterventionsSchedule } from '@/components/dashboard/InterventionsSchedule';
 import { BridgesMap } from '@/components/dashboard/BridgesMap';
-import { Activity, AlertTriangle, Building2 } from 'lucide-react';
+import { Activity, AlertTriangle, Building2, Ban, ShieldAlert, CheckCircle } from 'lucide-react';
 const defaultFilters: DashboardFilters = {
   search: '',
   structuralStatus: 'all',
@@ -89,13 +90,15 @@ export default function Dashboard() {
     return result;
   }, [allBridges, filters]);
 
-  // Stats
+  // Stats - using new status types
   const stats = useMemo(() => {
     return {
       total: allBridges.length,
-      normal: allBridges.filter(b => b.structuralStatus === 'normal').length,
-      alert: allBridges.filter(b => b.structuralStatus === 'alert').length,
-      critical: allBridges.filter(b => b.structuralStatus === 'critical').length,
+      operacional: allBridges.filter(b => b.structuralStatus === 'operacional').length,
+      atencao: allBridges.filter(b => b.structuralStatus === 'atencao').length,
+      restricoes: allBridges.filter(b => b.structuralStatus === 'restricoes').length,
+      critico: allBridges.filter(b => b.structuralStatus === 'critico').length,
+      interdicao: allBridges.filter(b => b.structuralStatus === 'interdicao').length,
       withAlerts: allBridges.filter(b => b.hasActiveAlerts).length
     };
   }, [allBridges]);
@@ -146,63 +149,84 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* Stats + KPIs + Map - tudo em uma linha */}
-        <div className="mb-4 grid gap-3 grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-          {/* Stats Cards - mais compactos */}
-          <div className="rounded-lg border bg-card p-3 py-[20px]">
+        {/* Stats Cards Row */}
+        <div className="mb-3 grid gap-2 grid-cols-3 lg:grid-cols-6">
+          <div className="rounded-lg border bg-card p-2">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                <Building2 className="h-4 w-4 text-primary" />
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+                <Building2 className="h-3.5 w-3.5 text-primary" />
               </div>
               <div>
-                <p className="text-xl font-bold">{stats.total}</p>
-                <p className="text-xs text-muted-foreground">Total de Ativos</p>
+                <p className="text-lg font-bold">{stats.total}</p>
+                <p className="text-[10px] text-muted-foreground">Total</p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-3 py-[20px]">
+          <div className="rounded-lg border bg-card p-2">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10">
-                <Activity className="h-4 w-4 text-success" />
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-success/10">
+                <CheckCircle className="h-3.5 w-3.5 text-success" />
               </div>
               <div>
-                <p className="text-xl font-bold">{stats.normal}</p>
-                <p className="text-xs text-muted-foreground">Status Normal</p>
+                <p className="text-lg font-bold">{stats.operacional}</p>
+                <p className="text-[10px] text-muted-foreground">Operacional</p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-3 py-[20px]">
+          <div className="rounded-lg border bg-card p-2">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10">
-                <AlertTriangle className="h-4 w-4 text-warning" />
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-warning/10">
+                <Activity className="h-3.5 w-3.5 text-warning" />
               </div>
               <div>
-                <p className="text-xl font-bold">{stats.alert}</p>
-                <p className="text-xs text-muted-foreground">Em Alerta</p>
+                <p className="text-lg font-bold">{stats.atencao}</p>
+                <p className="text-[10px] text-muted-foreground">C/ Atenção</p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-3 py-[20px]">
+          <div className="rounded-lg border bg-card p-2">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10">
-                <AlertTriangle className="h-4 w-4 text-destructive" />
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/10">
+                <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
               </div>
               <div>
-                <p className="text-xl font-bold">{stats.critical}</p>
-                <p className="text-xs text-muted-foreground">Críticos</p>
+                <p className="text-lg font-bold">{stats.restricoes}</p>
+                <p className="text-[10px] text-muted-foreground">C/ Restrições</p>
               </div>
             </div>
           </div>
-
-          {/* KPI Summary Cards inline */}
-          <div className="col-span-2 lg:col-span-4 xl:col-span-2">
-            <KPISummaryCards onNavigateToSection={handleNavigateToSection} />
+          <div className="rounded-lg border bg-card p-2">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-destructive/10">
+                <ShieldAlert className="h-3.5 w-3.5 text-destructive" />
+              </div>
+              <div>
+                <p className="text-lg font-bold">{stats.critico}</p>
+                <p className="text-[10px] text-muted-foreground">Crítico</p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-lg border bg-card p-2">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-destructive/10">
+                <Ban className="h-3.5 w-3.5 text-destructive" />
+              </div>
+              <div>
+                <p className="text-lg font-bold">{stats.interdicao}</p>
+                <p className="text-[10px] text-muted-foreground">Interdição</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Map - largura total, altura reduzida */}
-        <div className="mb-4">
-          <BridgesMap compact />
+        {/* Map + KPI Buttons side by side */}
+        <div className="mb-3 grid gap-3 grid-cols-1 lg:grid-cols-4">
+          <div className="lg:col-span-3">
+            <BridgesMap compact />
+          </div>
+          <div className="lg:col-span-1">
+            <KPISummaryCards onNavigateToSection={handleNavigateToSection} />
+          </div>
         </div>
 
         {/* Distribution Charts */}

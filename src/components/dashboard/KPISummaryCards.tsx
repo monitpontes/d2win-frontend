@@ -8,8 +8,8 @@ export function KPISummaryCards({
 }: KPISummaryCardsProps) {
   const problemsCount = getStructuralProblems().length;
   const interventionsCount = getInterventions().length;
-  return <div className="grid gap-3 grid-cols-2 h-full">
-      <button onClick={() => onNavigateToSection('operational')} className="rounded-lg border-l-4 border-l-primary bg-card p-3 text-left hover:shadow-md transition-all group py-[20px]">
+  return <div className="grid gap-3 grid-rows-2 h-full">
+      <button onClick={() => onNavigateToSection('operational')} className="rounded-lg border-l-4 border-l-primary bg-card p-3 text-left hover:shadow-md transition-all group">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
@@ -21,7 +21,7 @@ export function KPISummaryCards({
         </div>
       </button>
 
-      <button onClick={() => onNavigateToSection('interventions')} className="rounded-lg border-l-4 border-l-primary bg-card p-3 text-left hover:shadow-md transition-all group py-[20px]">
+      <button onClick={() => onNavigateToSection('interventions')} className="rounded-lg border-l-4 border-l-primary bg-card p-3 text-left hover:shadow-md transition-all group">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">

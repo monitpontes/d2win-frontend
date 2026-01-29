@@ -21,9 +21,18 @@ export interface Company {
   createdAt: string;
 }
 
-// Structural status of a bridge
-export type StructuralStatus = 'normal' | 'alert' | 'critical';
+// Operational status of a bridge
+export type StructuralStatus = 'operacional' | 'atencao' | 'restricoes' | 'critico' | 'interdicao';
 export type OperationalCriticality = 'low' | 'medium' | 'high';
+
+// Status labels for display
+export const structuralStatusLabels: Record<StructuralStatus, string> = {
+  operacional: 'Operacional',
+  atencao: 'Operacional com atenção',
+  restricoes: 'Operacional com restrições',
+  critico: 'Condição crítica',
+  interdicao: 'Interdição recomendada',
+};
 
 // Bridge/Asset typology
 export type BridgeTypology = 'Ponte' | 'Viaduto' | 'Passarela';
