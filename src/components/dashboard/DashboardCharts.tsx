@@ -71,7 +71,7 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
           <CardDescription className="text-xs">Clique para filtrar</CardDescription>
         </CardHeader>
         <CardContent className="p-3 pt-0">
-          <div className="h-[140px]">
+          <div className="h-[170px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -103,7 +103,7 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
           <CardDescription className="text-xs">Clique para filtrar</CardDescription>
         </CardHeader>
         <CardContent className="p-3 pt-0">
-          <div className="h-[140px]">
+          <div className="h-[170px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={spanTypeData}>
                 <XAxis 
@@ -138,7 +138,7 @@ export function DashboardCharts({ bridges, onFilterByTypology, onFilterBySpanTyp
           <CardDescription className="text-xs">Clique para filtrar</CardDescription>
         </CardHeader>
         <CardContent className="p-3 pt-0">
-          <div className="h-[140px]">
+          <div className="h-[170px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={beamTypeData}>
                 <XAxis 

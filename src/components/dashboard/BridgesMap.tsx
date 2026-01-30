@@ -19,7 +19,7 @@ export function BridgesMap({ compact = false }: BridgesMapProps) {
     setMounted(true);
   }, []);
 
-  const mapHeight = compact ? 'h-[200px]' : 'h-[350px]';
+  const mapHeight = compact ? 'h-[260px]' : 'h-[350px]';
 
   if (!mounted) {
     return (
@@ -57,7 +57,9 @@ export function BridgesMap({ compact = false }: BridgesMapProps) {
           </div>
         }
       >
-        <BridgesMapClient compact={compact} />
+        <div className={`rounded-lg border bg-card overflow-hidden ${mapHeight}`}>
+          <BridgesMapClient compact={compact} />
+        </div>
       </React.Suspense>
     </ErrorBoundary>
   );
