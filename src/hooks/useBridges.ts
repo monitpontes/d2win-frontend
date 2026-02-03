@@ -15,6 +15,8 @@ export function useBridges(companyId?: string) {
     queryKey: ['bridges', companyId],
     queryFn: () => bridgesService.getBridges(companyId === 'all' ? undefined : companyId),
     staleTime: 2 * 60 * 1000, // 2 minutes
+    retry: 2,
+    retryDelay: 1000,
   });
 
   const createMutation = useMutation({

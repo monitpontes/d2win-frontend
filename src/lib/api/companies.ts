@@ -22,8 +22,15 @@ export function mapApiCompanyToCompany(apiCompany: ApiCompany): Company {
 }
 
 export async function getCompanies(): Promise<Company[]> {
-  const response = await api.get<ApiCompany[]>('/companies');
-  return response.data.map(mapApiCompanyToCompany);
+  try {
+    const response = await api.get<ApiCompany[]>('/companies');
+    console.log('[Companies] Raw response:', response.data);
+    console.log('[Companies] Count:', response.data?.length || 0);
+    return response.data.map(mapApiCompanyToCompany);
+  } catch (error) {
+    console.error('[Companies] Error fetching:', error);
+    throw error;
+  }
 }
 
 export async function getCompany(id: string): Promise<Company> {
