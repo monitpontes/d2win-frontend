@@ -19,6 +19,7 @@ import DataAnalysisSection from '@/components/bridge/DataAnalysisSection';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { formatValue, formatDateValue, getSensorTypeLabel } from '@/lib/utils/formatValue';
 import { useInterventions, type NewIntervention } from '@/hooks/useInterventions';
 import { CreateInterventionDialog } from '@/components/interventions/CreateInterventionDialog';
 import { exportInterventions, exportSensorData, exportEvents, generateBridgeReport, exportToJSON } from '@/lib/exportUtils';
@@ -858,8 +859,8 @@ export default function BridgeDetail() {
                   )}
                 </div>
                 <div className="flex justify-between mt-2 text-sm text-muted-foreground">
-                  <span>Última atualização: {format(new Date(bridge.lastUpdate), 'dd/MM/yyyy', { locale: ptBR })}</span>
-                  <span>{bridge.typology} em {bridge.material.toLowerCase()}</span>
+                  <span>Última atualização: {formatDateValue(bridge.lastUpdate)}</span>
+                  <span>{formatValue(bridge.typology)} em {formatValue(bridge.material).toLowerCase()}</span>
                 </div>
               </CardContent>
             </Card>
@@ -873,35 +874,35 @@ export default function BridgeDetail() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-xs text-muted-foreground">Comprimento</p>
-                      <p className="text-xl font-bold">{bridge.length}m</p>
+                      <p className="text-xl font-bold">{formatValue(bridge.length, 'm')}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Largura</p>
-                      <p className="text-xl font-bold">{bridge.width || 12.5}m</p>
+                      <p className="text-xl font-bold">{formatValue(bridge.width, 'm')}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Número de Apoios</p>
-                      <p className="text-xl font-bold">{bridge.supportCount}</p>
+                      <p className="text-xl font-bold">{formatValue(bridge.supportCount)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Ano de Construção</p>
-                      <p className="text-xl font-bold">{bridge.constructionYear || 1998}</p>
+                      <p className="text-xl font-bold">{formatValue(bridge.constructionYear)}</p>
                     </div>
                     <div className="col-span-2">
                       <p className="text-xs text-muted-foreground">Tipologia</p>
-                      <p className="font-semibold">{bridge.typology} em {bridge.material.toLowerCase()}</p>
+                      <p className="font-semibold">{formatValue(bridge.typology)} {bridge.material ? `em ${bridge.material.toLowerCase()}` : ''}</p>
                     </div>
                     <div className="col-span-2">
                       <p className="text-xs text-muted-foreground">Material</p>
-                      <p className="font-semibold">{bridge.material}</p>
+                      <p className="font-semibold">{formatValue(bridge.material)}</p>
                     </div>
                     <div className="col-span-2">
                       <p className="text-xs text-muted-foreground">Capacidade</p>
-                      <p className="font-semibold">{bridge.capacity || 450} ton</p>
+                      <p className="font-semibold">{formatValue(bridge.capacity, ' ton')}</p>
                     </div>
                     <div className="col-span-2">
                       <p className="text-xs text-muted-foreground">Última Intervenção Maior</p>
-                      <p className="font-semibold">{bridge.lastMajorIntervention ? format(new Date(bridge.lastMajorIntervention), 'dd/MM/yyyy', { locale: ptBR }) : 'N/A'}</p>
+                      <p className="font-semibold">{formatDateValue(bridge.lastMajorIntervention)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -920,7 +921,7 @@ export default function BridgeDetail() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Impacto Operacional</p>
-                    <p className="font-semibold">Alto - {bridge.operationalImpact || 'Via principal de acesso'}</p>
+                    <p className="font-semibold">{formatValue(bridge.operationalImpact) !== '-' ? `Alto - ${bridge.operationalImpact}` : '-'}</p>
                   </div>
                   {needsIntervention && (
                     <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive">
