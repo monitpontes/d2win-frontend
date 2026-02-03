@@ -167,17 +167,17 @@ export default function Admin() {
       />
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="border-b bg-card p-6">
+        <div className="border-b bg-card px-6 py-4 shrink-0">
           <h1 className="text-2xl font-bold">Painel Administrativo</h1>
           <p className="text-muted-foreground">Gerenciando: <span className="text-primary font-medium">{selectedCompany?.name}</span></p>
         </div>
 
         {/* Tabs */}
-        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1">
-          <div className="border-b bg-card">
-            <TabsList className="h-14 w-full justify-stretch gap-0 rounded-none bg-transparent p-0">
+        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1 flex flex-col overflow-hidden">
+          <div className="border-b bg-card shrink-0">
+            <TabsList className="h-12 w-full justify-center gap-8 rounded-none bg-transparent p-0">
               <TabsTrigger 
                 value="bridges" 
                 className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
@@ -209,9 +209,9 @@ export default function Admin() {
             </TabsList>
           </div>
 
-          <div className="p-6">
+          <div className="flex-1 overflow-auto p-6">
             {/* Bridges Tab */}
-            <TabsContent value="bridges" className="m-0 space-y-6">
+            <TabsContent value="bridges" className="m-0 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold">Gerenciamento de Pontes - {selectedCompany?.name}</h2>
                 <Button onClick={() => setIsNewBridgeOpen(true)}>
@@ -281,9 +281,9 @@ export default function Admin() {
             </TabsContent>
 
             {/* Users Tab */}
-            <TabsContent value="users" className="m-0 space-y-6">
+            <TabsContent value="users" className="m-0 space-y-4">
               {/* Stats Cards */}
-              <div className="grid gap-4 md:grid-cols-4">
+              <div className="grid gap-3 grid-cols-4">
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
@@ -460,9 +460,9 @@ export default function Admin() {
             </TabsContent>
 
             {/* Devices Tab */}
-            <TabsContent value="devices" className="m-0 space-y-6">
+            <TabsContent value="devices" className="m-0 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Dispositivos & Parâmetros - {selectedCompany?.name}</h2>
+                <h2 className="text-lg font-semibold">Dispositivos & Parâmetros - {selectedCompany?.name}</h2>
                 <Button onClick={() => setIsNewDeviceOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Novo Dispositivo
@@ -470,7 +470,7 @@ export default function Admin() {
               </div>
 
               <Card>
-                <CardContent className="pt-6">
+                <CardContent className="p-0">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -517,7 +517,7 @@ export default function Admin() {
             </TabsContent>
 
             {/* System Tab */}
-            <TabsContent value="system" className="m-0 space-y-6">
+            <TabsContent value="system" className="m-0 space-y-4">
               <Card>
                 <CardHeader>
                   <div className="flex items-center gap-2">
