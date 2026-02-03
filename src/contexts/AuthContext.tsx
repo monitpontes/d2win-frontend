@@ -21,11 +21,8 @@ const STORAGE_KEY = 'd2win_user';
 const SESSION_KEY = 'd2win_session';
 const TOKEN_KEY = 'd2win_token';
 
-// Verifica se a API está configurada
-const isApiConfigured = (): boolean => {
-  const apiUrl = import.meta.env.VITE_API_URL;
-  return !!apiUrl && apiUrl.length > 0;
-};
+// API está sempre configurada com fallback hardcoded
+const isApiConfigured = (): boolean => true;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
