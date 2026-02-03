@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { mockBridges, getSensorsByBridge, getEventsByBridge, getCamerasByBridge, getSchedulesByBridge, getDocumentsByBridge, mockSystemStatus, mockStructuralProblems } from '@/data/mockData';
+import { useBridge } from '@/hooks/useBridges';
+import { useDevices } from '@/hooks/useDevices';
 import { useAuth } from '@/contexts/AuthContext';
 import { structuralStatusLabels, type StructuralStatus } from '@/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -8,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Activity, FileText, Camera, Settings, Calendar, MapPin, AlertTriangle, Wifi, WifiOff, Play, RefreshCw, FileUp, Download, Eye, Wrench, XCircle, CheckCircle, Clock, TriangleAlert, ExternalLink, FolderOpen, History, Video, Link as LinkIcon, Zap, Box, Table as TableIcon, Plus, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Activity, FileText, Camera, Settings, Calendar, MapPin, AlertTriangle, Wifi, WifiOff, Play, RefreshCw, FileUp, Download, Eye, Wrench, XCircle, CheckCircle, Clock, TriangleAlert, ExternalLink, FolderOpen, History, Video, Link as LinkIcon, Zap, Box, Table as TableIcon, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { ComposedChart, ReferenceLine as ReferenceLineComposed } from 'recharts';
 import type { BridgeEvent, Intervention } from '@/types';
@@ -46,21 +47,35 @@ export default function BridgeDetail() {
 
   const { interventions, addIntervention, updateIntervention, deleteIntervention, getInterventionsByBridge } = useInterventions();
 
-  const bridge = useMemo(() => mockBridges.find((b) => b.id === id), [id]);
-  const sensors = useMemo(() => getSensorsByBridge(id || ''), [id]);
-  const events = useMemo(() => getEventsByBridge(id || ''), [id]);
-  const cameras = useMemo(() => getCamerasByBridge(id || ''), [id]);
-  const schedules = useMemo(() => getSchedulesByBridge(id || ''), [id]);
-  const documents = useMemo(() => getDocumentsByBridge(id || ''), [id]);
-  const bridgeProblems = useMemo(() => mockStructuralProblems.filter(p => p.bridgeId === id), [id]);
+  // Use API to fetch bridge data
+  const { bridge, isLoading: isLoadingBridge } = useBridge(id);
+  const { devices: sensors, isLoading: isLoadingSensors } = useDevices(undefined, id);
+  
+  // Placeholder data for features not yet connected to API
+  const events: BridgeEvent[] = [];
+  const cameras: any[] = [];
+  const schedules: any[] = [];
+  const documents: any[] = [];
+  const bridgeProblems: any[] = [];
   const bridgeInterventions = useMemo(() => getInterventionsByBridge(id || ''), [id, interventions]);
 
   const canEdit = hasRole(['admin', 'gestor']);
+
+  // Loading state
+  if (isLoadingBridge) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center p-6">
+        <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">Carregando dados da ponte...</p>
+      </div>
+    );
+  }
 
   if (!bridge) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-6">
         <h2 className="text-xl font-semibold">Ponte não encontrada</h2>
+        <p className="text-muted-foreground mb-4">Verifique a conexão com a API</p>
         <Button asChild className="mt-4">
           <Link to="/dashboard">Voltar ao Dashboard</Link>
         </Button>

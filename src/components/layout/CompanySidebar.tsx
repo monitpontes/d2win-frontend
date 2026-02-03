@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { mockCompanies } from '@/data/mockData';
+import { useCompanies } from '@/hooks/useCompanies';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Building2, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Building2, Plus, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CompanySidebarProps {
@@ -17,6 +17,7 @@ interface CompanySidebarProps {
 
 export function CompanySidebar({ selectedCompanyId, onSelectCompany }: CompanySidebarProps) {
   const { hasRole } = useAuth();
+  const { companies, isLoading, createCompany, isCreating } = useCompanies();
   const [collapsed, setCollapsed] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newCompany, setNewCompany] = useState({ name: '', description: '' });
@@ -24,10 +25,11 @@ export function CompanySidebar({ selectedCompanyId, onSelectCompany }: CompanySi
   const isAdmin = hasRole('admin');
 
   const handleAddCompany = () => {
-    // Mock add company
-    console.log('Adding company:', newCompany);
-    setDialogOpen(false);
-    setNewCompany({ name: '', description: '' });
+    if (newCompany.name.trim()) {
+      createCompany({ name: newCompany.name.trim(), description: newCompany.description });
+      setDialogOpen(false);
+      setNewCompany({ name: '', description: '' });
+    }
   };
 
   return (
@@ -74,27 +76,42 @@ export function CompanySidebar({ selectedCompanyId, onSelectCompany }: CompanySi
             {!collapsed && <span>Todas as Empresas</span>}
           </button>
 
-          {/* Company Items */}
-          {mockCompanies.map((company) => (
-            <button
-              key={company.id}
-              onClick={() => onSelectCompany(company.id)}
-              className={cn(
-                'mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                selectedCompanyId === company.id
-                  ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent'
-              )}
-              title={collapsed ? company.name : undefined}
-            >
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-sidebar-accent text-xs font-medium text-sidebar-accent-foreground">
-                {company.name.charAt(0)}
-              </div>
+          {/* Loading State */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : companies.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground">
               {!collapsed && (
-                <span className="truncate">{company.name}</span>
+                <>
+                  <Building2 className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                  <p className="text-xs">Nenhuma empresa encontrada</p>
+                </>
               )}
-            </button>
-          ))}
+            </div>
+          ) : (
+            companies.map((company) => (
+              <button
+                key={company.id}
+                onClick={() => onSelectCompany(company.id)}
+                className={cn(
+                  'mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                  selectedCompanyId === company.id
+                    ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                    : 'text-sidebar-foreground hover:bg-sidebar-accent'
+                )}
+                title={collapsed ? company.name : undefined}
+              >
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-sidebar-accent text-xs font-medium text-sidebar-accent-foreground">
+                  {company.name.charAt(0)}
+                </div>
+                {!collapsed && (
+                  <span className="truncate">{company.name}</span>
+                )}
+              </button>
+            ))
+          )}
         </div>
       </ScrollArea>
 
@@ -137,7 +154,8 @@ export function CompanySidebar({ selectedCompanyId, onSelectCompany }: CompanySi
                     placeholder="Descrição da empresa"
                   />
                 </div>
-                <Button onClick={handleAddCompany} className="w-full">
+                <Button onClick={handleAddCompany} className="w-full" disabled={isCreating}>
+                  {isCreating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   Salvar
                 </Button>
               </div>
