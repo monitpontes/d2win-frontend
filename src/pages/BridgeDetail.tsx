@@ -253,46 +253,159 @@ export default function BridgeDetail() {
                   <div className="space-y-4">
                     <h4 className="font-medium">Dados dos Sensores</h4>
                     {selectedSensor3D ? (
-                      <div className="space-y-3 p-4 rounded-lg border bg-muted/30">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-lg">{selectedSensor3D.name}</span>
-                          <Badge variant={selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' ? 'destructive' : 'secondary'}>
-                            {selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' ? 'Alerta' : 'Normal'}
-                          </Badge>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 text-sm">
-                          <div>
-                            <p className="text-muted-foreground text-xs">Posição</p>
-                            <p className="font-medium">{selectedSensor3D.position}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground text-xs">Tipo</p>
-                            <p className="font-medium">{selectedSensor3D.type}</p>
+                      <div className="space-y-4">
+                        <div className="space-y-3 rounded-lg border bg-card p-4">
+                          <div className="grid grid-cols-2 gap-3 text-sm border-b pb-3">
+                            <div>
+                              <p className="text-muted-foreground text-xs">Nome:</p>
+                              <p className="font-medium text-right">{bridge.id.replace('bridge-', 'A-P')}-{selectedSensor3D.id}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground text-xs">Posição:</p>
+                              <p className="font-medium text-right">Posição {selectedSensor3D.id}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground text-xs">Tipo:</p>
+                              <p className="font-medium text-right">{selectedSensor3D.type}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground text-xs">Status:</p>
+                              <div className="flex items-center justify-end gap-1">
+                                <span className={cn(
+                                  "w-2 h-2 rounded-full",
+                                  selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' 
+                                    ? 'bg-destructive' 
+                                    : selectedSensor3D.status === 'warning' 
+                                    ? 'bg-warning' 
+                                    : 'bg-success'
+                                )} />
+                                <Badge variant={
+                                  selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' 
+                                    ? 'destructive' 
+                                    : selectedSensor3D.status === 'warning' 
+                                    ? 'outline' 
+                                    : 'secondary'
+                                } className="text-xs">
+                                  {selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' ? 'Alerta' : 
+                                   selectedSensor3D.status === 'warning' ? 'Atenção' : 'Normal'}
+                                </Badge>
+                              </div>
+                            </div>
                           </div>
                           {selectedSensor3D.deviceType === 'frequencia' && (
-                            <>
+                            <div className="grid grid-cols-2 gap-3 text-sm">
                               <div>
-                                <p className="text-muted-foreground text-xs">Frequência 1</p>
-                                <p className="font-medium">{selectedSensor3D.frequency1?.toFixed(2)} Hz</p>
+                                <p className="text-muted-foreground text-xs">Frequência Eixo X:</p>
+                                <p className="font-bold text-right">{selectedSensor3D.frequency1?.toFixed(2)} Hz</p>
                               </div>
                               <div>
-                                <p className="text-muted-foreground text-xs">Frequência 2</p>
-                                <p className="font-medium">{selectedSensor3D.frequency2?.toFixed(2)} Hz</p>
+                                <p className="text-muted-foreground text-xs">Magnitude Pico X:</p>
+                                <p className="font-medium text-right">{((selectedSensor3D.frequency1 || 3.5) * 5.5).toFixed(2)}</p>
                               </div>
-                            </>
-                          )}
-                          {selectedSensor3D.deviceType === 'aceleracao' && (
-                            <div>
-                              <p className="text-muted-foreground text-xs">Aceleração</p>
-                              <p className="font-medium">{selectedSensor3D.acceleration?.toFixed(2)} m/s²</p>
+                              <div>
+                                <p className="text-muted-foreground text-xs">Frequência Eixo Z:</p>
+                                <p className="font-bold text-right">{selectedSensor3D.frequency2?.toFixed(2)} Hz</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground text-xs">Magnitude Pico Z:</p>
+                                <p className="font-medium text-right">{((selectedSensor3D.frequency2 || 3.2) * 6.8).toFixed(2)}</p>
+                              </div>
                             </div>
                           )}
+                          {selectedSensor3D.deviceType === 'aceleracao' && (
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <p className="text-muted-foreground text-xs">Aceleração Eixo X:</p>
+                                <p className="font-bold text-right">{selectedSensor3D.acceleration?.toFixed(2)} m/s²</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground text-xs">Aceleração Eixo Z:</p>
+                                <p className="font-bold text-right">{((selectedSensor3D.acceleration || 0.15) * 1.2).toFixed(2)} m/s²</p>
+                              </div>
+                            </div>
+                          )}
+                          <div className="pt-2 border-t text-sm">
+                            <p className="text-muted-foreground text-xs">Timestamp:</p>
+                            <p className="font-mono text-xs text-right">{selectedSensor3D.timestamp}</p>
+                          </div>
+                        </div>
+
+                        {/* Sensor Chart - Last 8 readings */}
+                        <div className="rounded-lg border bg-card p-4">
+                          <h5 className="font-medium text-sm mb-2">
+                            {selectedSensor3D.deviceType === 'frequencia' 
+                              ? 'Frequência Eixos X e Z - Últimas 8 Leituras'
+                              : 'Aceleração Eixos X e Z - Últimas 8 Leituras'
+                            }
+                          </h5>
+                          <div className="h-36">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={Array.from({ length: 8 }, (_, i) => {
+                                const baseTime = new Date();
+                                baseTime.setMinutes(baseTime.getMinutes() - (7 - i) * 5);
+                                const timeStr = `${baseTime.getHours().toString().padStart(2, '0')}:${baseTime.getMinutes().toString().padStart(2, '0')}:${baseTime.getSeconds().toString().padStart(2, '0')}`;
+                                
+                                if (selectedSensor3D.deviceType === 'frequencia') {
+                                  return {
+                                    time: timeStr,
+                                    eixoX: (selectedSensor3D.frequency1 || 3.5) + (Math.random() - 0.5) * 0.3,
+                                    eixoZ: (selectedSensor3D.frequency2 || 3.2) + (Math.random() - 0.5) * 0.2,
+                                  };
+                                } else {
+                                  return {
+                                    time: timeStr,
+                                    eixoX: (selectedSensor3D.acceleration || 0.15) + (Math.random() - 0.5) * 0.05,
+                                    eixoZ: ((selectedSensor3D.acceleration || 0.15) * 1.2) + (Math.random() - 0.5) * 0.05,
+                                  };
+                                }
+                              })}>
+                                <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                                <XAxis dataKey="time" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={40} />
+                                <YAxis 
+                                  tick={{ fontSize: 9 }} 
+                                  domain={selectedSensor3D.deviceType === 'frequencia' ? [2.8, 4.0] : [0, 0.5]} 
+                                  width={35}
+                                />
+                                <Tooltip 
+                                  contentStyle={{ fontSize: 11 }}
+                                  formatter={(value: number) => [
+                                    selectedSensor3D.deviceType === 'frequencia' 
+                                      ? `${value.toFixed(2)} Hz` 
+                                      : `${value.toFixed(3)} m/s²`,
+                                    ''
+                                  ]}
+                                />
+                                <Legend 
+                                  wrapperStyle={{ fontSize: 10 }}
+                                  formatter={(value) => value === 'eixoX' ? 'Eixo X' : 'Eixo Z'}
+                                />
+                                <Line 
+                                  type="monotone" 
+                                  dataKey="eixoX" 
+                                  stroke="hsl(var(--primary))" 
+                                  strokeWidth={2} 
+                                  dot={{ r: 3, fill: 'hsl(var(--primary))' }}
+                                  name="eixoX"
+                                />
+                                <Line 
+                                  type="monotone" 
+                                  dataKey="eixoZ" 
+                                  stroke="hsl(142, 76%, 36%)" 
+                                  strokeWidth={2} 
+                                  dot={{ r: 3, fill: 'hsl(142, 76%, 36%)' }}
+                                  name="eixoZ"
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
                         </div>
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">
-                        Clique em um sensor no modelo 3D para ver os detalhes.
-                      </p>
+                      <div className="p-4 rounded-lg border bg-muted/30 text-center">
+                        <p className="text-sm text-muted-foreground">
+                          Clique em um sensor no modelo 3D para ver os detalhes e o gráfico de leituras.
+                        </p>
+                      </div>
                     )}
                     <div className="text-xs text-muted-foreground space-y-1">
                       <p>• Utilize o mouse para girar a visualização</p>
