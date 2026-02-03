@@ -7,8 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, ReferenceLine, Scatter, ScatterChart, Cell, ComposedChart } from 'recharts';
-import { Filter, Download, AlertTriangle, TrendingUp, TrendingDown, Activity, Maximize2, X, Calendar, Table, CheckCircle } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, ReferenceLine, Scatter, ComposedChart } from 'recharts';
+import { Filter, Download, AlertTriangle, TrendingUp, TrendingDown, Maximize2, Calendar, Table, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface DataAnalysisSectionProps {
@@ -28,8 +28,11 @@ interface AnomalyEvent {
   description: string;
 }
 
-type AxisFilter = 'X' | 'Z';
+// Axis types
+type AccelerationAxis = 'X' | 'Y' | 'Z' | 'Todos';
+type FrequencyAxis = 'X' | 'Z' | 'Todos';
 type MetricFilter = 'RMS' | 'Pico';
+type DataTypeFilter = 'Aceleração' | 'Frequência';
 
 export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionProps) {
   const [selectedSensors, setSelectedSensors] = useState<string[]>(['Todos', 'T1 Freq N', 'T1 Freq S', 'T1 AccN', 'S4 AccN', 'T Flow']);
@@ -38,8 +41,15 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
   const [aggregation, setAggregation] = useState('1 sem');
   const [showAnomalies, setShowAnomalies] = useState(true);
   
-  // New state for chart controls
-  const [axisFilter, setAxisFilter] = useState<AxisFilter>('Z');
+  // Chart-specific axis filters
+  const [accelAxisFilter, setAccelAxisFilter] = useState<AccelerationAxis>('Z');
+  const [freqAxisFilter, setFreqAxisFilter] = useState<FrequencyAxis>('Z');
+  const [distAxisFilter, setDistAxisFilter] = useState<AccelerationAxis>('Z');
+  const [distDataTypeFilter, setDistDataTypeFilter] = useState<DataTypeFilter>('Aceleração');
+  const [beamAxisFilter, setBeamAxisFilter] = useState<FrequencyAxis>('Z');
+  const [beamSensor1, setBeamSensor1] = useState('S1');
+  const [beamSensor2, setBeamSensor2] = useState('S2');
+  
   const [metricFilter, setMetricFilter] = useState<MetricFilter>('RMS');
   const [fullscreenChart, setFullscreenChart] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<AnomalyEvent | null>(null);
@@ -73,23 +83,33 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
     structuralStatus: 'Crítico',
   };
 
-  // Mock time series data for charts with axis options
+  // Mock time series data with X, Y, Z axes for acceleration
   const timeSeriesAcceleration = useMemo(() => {
-    const baseData = Array.from({ length: 30 }, (_, i) => ({
+    return Array.from({ length: 30 }, (_, i) => ({
       date: `${String(i + 1).padStart(2, '0')}/01`,
       valueX: 9.2 + Math.random() * 0.5 + (i === 15 ? 1.5 : 0),
+      valueY: 9.0 + Math.random() * 0.3 + (i === 15 ? 1.2 : 0),
       valueZ: 9.4 + Math.random() * 0.4 + (i === 15 ? 1.8 : 0),
       anomalyX: i === 15 ? 10.7 : null,
+      anomalyY: i === 15 ? 10.2 : null,
       anomalyZ: i === 15 ? 11.2 : null,
     }));
-    return baseData;
   }, []);
 
+  // Mock time series data with X, Z axes for frequency (4 sensors)
   const timeSeriesFrequency = useMemo(() => {
     return Array.from({ length: 30 }, (_, i) => ({
       date: `${String(i + 1).padStart(2, '0')}/01`,
-      frequencyX: 3.5 + Math.random() * 0.3,
-      frequencyZ: 3.7 + Math.random() * 0.4,
+      s1X: 4.5 + Math.random() * 0.3,
+      s1Z: 4.6 + Math.random() * 0.2,
+      s2X: 4.4 + Math.random() * 0.25,
+      s2Z: 4.5 + Math.random() * 0.3,
+      s3X: 4.3 + Math.random() * 0.35,
+      s3Z: 4.4 + Math.random() * 0.25,
+      s4X: 4.6 + Math.random() * 0.2,
+      s4Z: 4.7 + Math.random() * 0.15,
+      referenceX: 4.8,
+      referenceZ: 4.9,
     }));
   }, []);
 
@@ -102,30 +122,46 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
     }));
   }, []);
 
+  // Distribution data based on axis and data type
   const distributionData = useMemo(() => {
+    if (distDataTypeFilter === 'Aceleração') {
+      return [
+        { range: '8.5-9.0', count: 45 },
+        { range: '9.0-9.3', count: 180 },
+        { range: '9.3-9.6', count: 280 },
+        { range: '9.6-9.9', count: 260 },
+        { range: '9.9-10.2', count: 30 },
+        { range: '>10.2', count: 5 },
+      ];
+    }
     return [
-      { range: '<2.0', count: 45 },
-      { range: '2.0-2.5', count: 120 },
-      { range: '2.5-3.0', count: 280 },
-      { range: '3.0-3.5', count: 350 },
-      { range: '3.5-4.0', count: 180 },
-      { range: '4.0-4.5', count: 95 },
-      { range: '>4.5', count: 30 },
+      { range: '3.5-4.0', count: 50 },
+      { range: '4.0-4.3', count: 180 },
+      { range: '4.3-4.6', count: 320 },
+      { range: '4.6-4.9', count: 280 },
+      { range: '4.9-5.2', count: 120 },
+      { range: '>5.2', count: 20 },
     ];
-  }, []);
+  }, [distDataTypeFilter]);
 
+  // Beam comparison data with sensor filters
   const beamComparisonData = useMemo(() => {
-    return Array.from({ length: 12 }, (_, i) => ({
-      month: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][i],
-      longN1: 3.2 + Math.random() * 0.4,
-      longN2: 3.4 + Math.random() * 0.3,
-      longS1: 3.1 + Math.random() * 0.5,
-      longS2: 3.3 + Math.random() * 0.4,
+    return Array.from({ length: 30 }, (_, i) => ({
+      date: `${String(i + 1).padStart(2, '0')}/01`,
+      s1X: 4.5 + Math.random() * 0.2,
+      s1Z: 4.6 + Math.random() * 0.15,
+      s2X: 4.4 + Math.random() * 0.25,
+      s2Z: 4.5 + Math.random() * 0.2,
+      s3X: 4.3 + Math.random() * 0.2,
+      s3Z: 4.4 + Math.random() * 0.18,
+      s4X: 4.6 + Math.random() * 0.15,
+      s4Z: 4.7 + Math.random() * 0.12,
     }));
   }, []);
 
   const sensorOptions = ['Todos', 'T1 Freq N', 'T1 Freq S', 'T1 AccN', 'S4 AccN', 'T Flow'];
   const dataTypeOptions = ['Ambos', 'Aceleração', 'Frequência'];
+  const sensorSelectOptions = ['S1', 'S2', 'S3', 'S4'];
 
   const toggleSensor = (sensor: string) => {
     if (sensor === 'Todos') {
@@ -157,132 +193,100 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
     }
   };
 
-  // Chart header with axis filter and fullscreen
-  const ChartHeader = ({ 
-    title, 
-    description, 
-    chartId, 
-    showAxisFilter = true,
-    showMetricFilter = false,
-  }: { 
-    title: string; 
-    description: string; 
-    chartId: string;
-    showAxisFilter?: boolean;
-    showMetricFilter?: boolean;
-  }) => (
-    <CardHeader className="pb-2">
-      <div className="flex items-center justify-between">
-        <div>
-          <CardTitle className="text-sm">{title}</CardTitle>
-          <CardDescription className="text-xs">{description}</CardDescription>
-        </div>
-        <div className="flex items-center gap-2">
-          {showAxisFilter && (
-            <Select value={axisFilter} onValueChange={(v: AxisFilter) => setAxisFilter(v)}>
-              <SelectTrigger className="h-7 w-16 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="X">X</SelectItem>
-                <SelectItem value="Z">Z</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-          {showMetricFilter && (
-            <div className="flex border rounded-md overflow-hidden">
-              <Button
-                variant={metricFilter === 'RMS' ? 'default' : 'ghost'}
-                size="sm"
-                className="h-7 px-2 text-xs rounded-none"
-                onClick={() => setMetricFilter('RMS')}
-              >
-                RMS
-              </Button>
-              <Button
-                variant={metricFilter === 'Pico' ? 'default' : 'ghost'}
-                size="sm"
-                className="h-7 px-2 text-xs rounded-none"
-                onClick={() => setMetricFilter('Pico')}
-              >
-                Pico
-              </Button>
-            </div>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => setFullscreenChart(chartId)}
-          >
-            <Maximize2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    </CardHeader>
-  );
+  // Colors for sensors
+  const sensorColors = {
+    S1: 'hsl(220, 70%, 50%)',
+    S2: 'hsl(142, 76%, 36%)',
+    S3: 'hsl(38, 92%, 50%)',
+    S4: 'hsl(0, 84%, 60%)',
+  };
 
-  // Render acceleration chart
-  const renderAccelerationChart = (height: number = 192) => (
-    <ResponsiveContainer width="100%" height={height}>
-      <ComposedChart data={timeSeriesAcceleration}>
-        <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
-        <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-        <YAxis domain={[8, 12]} tick={{ fontSize: 9 }} label={{ value: `${metricFilter} Eixo ${axisFilter} (m/s²)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
-        <Tooltip />
-        <ReferenceLine y={11} stroke="hsl(var(--destructive))" strokeDasharray="5 5" label={{ value: 'Limite Crítico', fontSize: 9, fill: 'hsl(var(--destructive))' }} />
-        <ReferenceLine y={10.5} stroke="hsl(var(--warning))" strokeDasharray="5 5" label={{ value: 'Limite Alerta', fontSize: 9, fill: 'hsl(var(--warning))' }} />
-        <Line 
-          type="monotone" 
-          dataKey={axisFilter === 'X' ? 'valueX' : 'valueZ'} 
-          stroke="hsl(var(--primary))" 
-          strokeWidth={1.5} 
-          dot={false} 
-          name={`Eixo ${axisFilter}`} 
-        />
-        {/* Anomaly points */}
-        <Scatter 
-          dataKey={axisFilter === 'X' ? 'anomalyX' : 'anomalyZ'} 
-          fill="hsl(var(--destructive))"
-          shape={(props: any) => {
-            if (!props.payload[axisFilter === 'X' ? 'anomalyX' : 'anomalyZ']) return null;
-            return (
-              <circle
-                cx={props.cx}
-                cy={props.cy}
-                r={6}
-                fill="hsl(var(--destructive))"
-                stroke="white"
-                strokeWidth={2}
-                style={{ cursor: 'pointer' }}
-                onClick={() => setSelectedEvent(anomalyEvent)}
-              />
-            );
-          }}
-        />
-      </ComposedChart>
-    </ResponsiveContainer>
-  );
+  // Render acceleration chart with X/Y/Z or all
+  const renderAccelerationChart = (height: number = 192) => {
+    const showAll = accelAxisFilter === 'Todos';
+    
+    return (
+      <ResponsiveContainer width="100%" height={height}>
+        <ComposedChart data={timeSeriesAcceleration}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+          <XAxis dataKey="date" tick={{ fontSize: 9 }} />
+          <YAxis domain={[8, 12]} tick={{ fontSize: 9 }} label={{ value: `${metricFilter} Eixo ${accelAxisFilter} (m/s²)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
+          <Tooltip />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          <ReferenceLine y={11} stroke="hsl(220, 10%, 60%)" strokeDasharray="8 4" label={{ value: 'Limite Crítico', fontSize: 9, fill: 'hsl(220, 10%, 50%)' }} />
+          <ReferenceLine y={10.5} stroke="hsl(0, 84%, 60%)" strokeDasharray="5 5" label={{ value: 'Limite Alerta', fontSize: 9, fill: 'hsl(0, 84%, 60%)' }} />
+          
+          {(showAll || accelAxisFilter === 'X') && (
+            <Line type="monotone" dataKey="valueX" stroke="hsl(220, 70%, 50%)" strokeWidth={1.5} dot={false} name="Eixo X" />
+          )}
+          {(showAll || accelAxisFilter === 'Y') && (
+            <Line type="monotone" dataKey="valueY" stroke="hsl(142, 76%, 36%)" strokeWidth={1.5} dot={false} name="Eixo Y" />
+          )}
+          {(showAll || accelAxisFilter === 'Z') && (
+            <Line type="monotone" dataKey="valueZ" stroke="hsl(38, 92%, 50%)" strokeWidth={1.5} dot={false} name="Eixo Z" />
+          )}
+          
+          {showAnomalies && (
+            <Scatter 
+              dataKey={accelAxisFilter === 'X' ? 'anomalyX' : accelAxisFilter === 'Y' ? 'anomalyY' : 'anomalyZ'} 
+              fill="hsl(var(--destructive))"
+              shape={(props: any) => {
+                const key = accelAxisFilter === 'X' ? 'anomalyX' : accelAxisFilter === 'Y' ? 'anomalyY' : 'anomalyZ';
+                if (!props.payload[key]) return null;
+                return (
+                  <circle
+                    cx={props.cx}
+                    cy={props.cy}
+                    r={6}
+                    fill="hsl(var(--destructive))"
+                    stroke="white"
+                    strokeWidth={2}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setSelectedEvent(anomalyEvent)}
+                  />
+                );
+              }}
+            />
+          )}
+        </ComposedChart>
+      </ResponsiveContainer>
+    );
+  };
 
-  // Render frequency chart
-  const renderFrequencyChart = (height: number = 192) => (
-    <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={timeSeriesFrequency}>
-        <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
-        <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-        <YAxis domain={[2.5, 5.5]} tick={{ fontSize: 9 }} />
-        <Tooltip />
-        <Line 
-          type="monotone" 
-          dataKey={axisFilter === 'X' ? 'frequencyX' : 'frequencyZ'} 
-          stroke="hsl(var(--primary))" 
-          strokeWidth={2} 
-          dot={false} 
-          name={`Frequência Eixo ${axisFilter}`} 
-        />
-      </LineChart>
-    </ResponsiveContainer>
-  );
+  // Render frequency chart with X/Z or all, showing multiple sensors
+  const renderFrequencyChart = (height: number = 192) => {
+    const showAll = freqAxisFilter === 'Todos';
+    const axisKey = freqAxisFilter === 'Todos' ? 'Z' : freqAxisFilter;
+    
+    return (
+      <ResponsiveContainer width="100%" height={height}>
+        <LineChart data={timeSeriesFrequency}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+          <XAxis dataKey="date" tick={{ fontSize: 9 }} />
+          <YAxis domain={[3.5, 5.5]} tick={{ fontSize: 9 }} label={{ value: `domFreq1 Eixo ${freqAxisFilter} (Hz)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
+          <Tooltip />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          <ReferenceLine y={4.8} stroke="hsl(220, 10%, 60%)" strokeDasharray="5 5" label={{ value: 'Referência', fontSize: 9 }} />
+          
+          {showAll ? (
+            <>
+              <Line type="monotone" dataKey="s1Z" stroke={sensorColors.S1} strokeWidth={1.5} dot={false} name="S1" />
+              <Line type="monotone" dataKey="s2Z" stroke={sensorColors.S2} strokeWidth={1.5} dot={false} name="S2" />
+              <Line type="monotone" dataKey="s3Z" stroke={sensorColors.S3} strokeWidth={1.5} dot={false} name="S3" />
+              <Line type="monotone" dataKey="s4Z" stroke={sensorColors.S4} strokeWidth={1.5} dot={false} name="S4" />
+            </>
+          ) : (
+            <>
+              <Line type="monotone" dataKey={`s1${axisKey}`} stroke={sensorColors.S1} strokeWidth={1.5} dot={false} name="S1" />
+              <Line type="monotone" dataKey={`s2${axisKey}`} stroke={sensorColors.S2} strokeWidth={1.5} dot={false} name="S2" />
+              <Line type="monotone" dataKey={`s3${axisKey}`} stroke={sensorColors.S3} strokeWidth={1.5} dot={false} name="S3" />
+              <Line type="monotone" dataKey={`s4${axisKey}`} stroke={sensorColors.S4} strokeWidth={1.5} dot={false} name="S4" />
+            </>
+          )}
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  };
 
   // Render distribution chart
   const renderDistributionChart = (height: number = 192) => (
@@ -297,21 +301,38 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
     </ResponsiveContainer>
   );
 
-  // Render beam comparison chart
-  const renderBeamComparisonChart = (height: number = 192) => (
-    <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={beamComparisonData}>
-        <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
-        <XAxis dataKey="month" tick={{ fontSize: 9 }} />
-        <YAxis domain={[2.5, 4.5]} tick={{ fontSize: 9 }} />
-        <Tooltip />
-        <Line type="monotone" dataKey="longN1" stroke="hsl(220, 70%, 50%)" strokeWidth={1.5} dot={false} name="Long N1" />
-        <Line type="monotone" dataKey="longN2" stroke="hsl(140, 70%, 40%)" strokeWidth={1.5} dot={false} name="Long N2" />
-        <Line type="monotone" dataKey="longS1" stroke="hsl(30, 90%, 50%)" strokeWidth={1.5} dot={false} name="Long S1" />
-        <Line type="monotone" dataKey="longS2" stroke="hsl(280, 70%, 50%)" strokeWidth={1.5} dot={false} name="Long S2" />
-      </LineChart>
-    </ResponsiveContainer>
-  );
+  // Render beam comparison chart with sensor selection
+  const renderBeamComparisonChart = (height: number = 192) => {
+    const axisKey = beamAxisFilter === 'Todos' ? 'Z' : beamAxisFilter;
+    
+    return (
+      <ResponsiveContainer width="100%" height={height}>
+        <LineChart data={beamComparisonData}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+          <XAxis dataKey="date" tick={{ fontSize: 9 }} />
+          <YAxis domain={[3.5, 5.5]} tick={{ fontSize: 9 }} label={{ value: `domFreq1 Eixo ${beamAxisFilter} (Hz)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
+          <Tooltip />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          <Line 
+            type="monotone" 
+            dataKey={`${beamSensor1.toLowerCase()}${axisKey}`} 
+            stroke={sensorColors[beamSensor1 as keyof typeof sensorColors]} 
+            strokeWidth={1.5} 
+            dot={false} 
+            name={beamSensor1} 
+          />
+          <Line 
+            type="monotone" 
+            dataKey={`${beamSensor2.toLowerCase()}${axisKey}`} 
+            stroke={sensorColors[beamSensor2 as keyof typeof sensorColors]} 
+            strokeWidth={1.5} 
+            dot={false} 
+            name={beamSensor2} 
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -471,7 +492,7 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
               </div>
               <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                 <div>
-                  <p className="text-xs text-muted-foreground">Nível: Vibante</p>
+                  <p className="text-xs text-muted-foreground">Nível: Vibrante</p>
                   <p className="font-semibold flex items-center gap-1">
                     <TrendingUp className="h-3 w-3 text-destructive" />
                     E m/s²
@@ -497,38 +518,86 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
 
       {/* Data Visualization */}
       <div>
-        <h4 className="font-medium mb-4">Visualização de Dados</h4>
-        <p className="text-sm text-muted-foreground mb-4">Gráficos de frequência e aceleração - clique nos pontos vermelhos para ver detalhes de anomalias</p>
+        <h4 className="font-medium mb-1">Visualização de Dados</h4>
+        <p className="text-sm text-muted-foreground mb-4">Gráficos de Frequência e Aceleração</p>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Time Series - Acceleration */}
+          {/* Time Series - Acceleration (X, Y, Z axes) */}
           <Card>
-            <ChartHeader
-              title="Série Temporal - Aceleração"
-              description={`Dados do sensor accel1 eixo ${axisFilter} ao longo do tempo`}
-              chartId="acceleration"
-              showAxisFilter
-              showMetricFilter
-            />
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm">Série Temporal - Aceleração</CardTitle>
+                  <CardDescription className="text-xs">Dados do sensor accel1 eixo {accelAxisFilter} ao longo do tempo</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={accelAxisFilter} onValueChange={(v: AccelerationAxis) => setAccelAxisFilter(v)}>
+                    <SelectTrigger className="h-7 w-20 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="X">X</SelectItem>
+                      <SelectItem value="Y">Y</SelectItem>
+                      <SelectItem value="Z">Z</SelectItem>
+                      <SelectItem value="Todos">Todos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex border rounded-md overflow-hidden">
+                    <Button
+                      variant={metricFilter === 'RMS' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-7 px-2 text-xs rounded-none"
+                      onClick={() => setMetricFilter('RMS')}
+                    >
+                      RMS
+                    </Button>
+                    <Button
+                      variant={metricFilter === 'Pico' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-7 px-2 text-xs rounded-none"
+                      onClick={() => setMetricFilter('Pico')}
+                    >
+                      Pico
+                    </Button>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setFullscreenChart('acceleration')}>
+                    <Maximize2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
             <CardContent>
               <div className="h-48">
                 {renderAccelerationChart()}
               </div>
-              <div className="mt-2 text-xs text-muted-foreground space-y-1">
-                <p>• Ponto vermelho indica o momento exato da anomalia detectada</p>
-                <p>• Linha vermelha tracejada representa o limite crítico</p>
-              </div>
             </CardContent>
           </Card>
 
-          {/* Time Series - Frequency */}
+          {/* Time Series - Frequency (X, Z axes only) */}
           <Card>
-            <ChartHeader
-              title="Série Temporal - Frequência Dominante"
-              description={`Dados do sensor para eixo ${axisFilter} ao longo do tempo - frequência`}
-              chartId="frequency"
-              showAxisFilter
-            />
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm">Série Temporal - Frequência Dominante</CardTitle>
+                  <CardDescription className="text-xs">Dados de domFreq1 eixo {freqAxisFilter} dos 4 sensores de frequência</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={freqAxisFilter} onValueChange={(v: FrequencyAxis) => setFreqAxisFilter(v)}>
+                    <SelectTrigger className="h-7 w-20 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="X">X</SelectItem>
+                      <SelectItem value="Z">Z</SelectItem>
+                      <SelectItem value="Todos">Todos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setFullscreenChart('frequency')}>
+                    <Maximize2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
             <CardContent>
               <div className="h-48">
                 {renderFrequencyChart()}
@@ -536,14 +605,40 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
             </CardContent>
           </Card>
 
-          {/* Distribution */}
+          {/* Distribution with axis AND data type filter */}
           <Card>
-            <ChartHeader
-              title="Distribuição"
-              description={`Histograma dos valores medidos - Eixo ${axisFilter}`}
-              chartId="distribution"
-              showAxisFilter
-            />
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm">Distribuição</CardTitle>
+                  <CardDescription className="text-xs">Histograma dos valores medidos - Eixo {distAxisFilter}</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={distAxisFilter} onValueChange={(v: AccelerationAxis) => setDistAxisFilter(v)}>
+                    <SelectTrigger className="h-7 w-16 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="X">X</SelectItem>
+                      <SelectItem value="Y">Y</SelectItem>
+                      <SelectItem value="Z">Z</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={distDataTypeFilter} onValueChange={(v: DataTypeFilter) => setDistDataTypeFilter(v)}>
+                    <SelectTrigger className="h-7 w-28 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Aceleração">Aceleração</SelectItem>
+                      <SelectItem value="Frequência">Frequência</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setFullscreenChart('distribution')}>
+                    <Maximize2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
             <CardContent>
               <div className="h-48">
                 {renderDistributionChart()}
@@ -551,27 +646,45 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
             </CardContent>
           </Card>
 
-          {/* Beam Comparison */}
+          {/* Beam Comparison with axis and sensor filters */}
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-sm">Comparação entre Vigas</CardTitle>
-                  <CardDescription className="text-xs">Gráfico das séries ao longo do tempo - Longitudinais ZONA</CardDescription>
+                  <CardDescription className="text-xs">domFreq1 eixo {beamAxisFilter} ao longo do tempo - Correlação: 0.084</CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="flex gap-2 text-xs flex-wrap">
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" />N1</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" />N2</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500" />S1</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500" />S2</span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => setFullscreenChart('beamComparison')}
-                  >
+                  <Select value={beamAxisFilter} onValueChange={(v: FrequencyAxis) => setBeamAxisFilter(v)}>
+                    <SelectTrigger className="h-7 w-16 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="X">X</SelectItem>
+                      <SelectItem value="Z">Z</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={beamSensor1} onValueChange={setBeamSensor1}>
+                    <SelectTrigger className="h-7 w-16 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sensorSelectOptions.map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={beamSensor2} onValueChange={setBeamSensor2}>
+                    <SelectTrigger className="h-7 w-16 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sensorSelectOptions.map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setFullscreenChart('beamComparison')}>
                     <Maximize2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -591,43 +704,97 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
         <DialogContent className="max-w-6xl h-[80vh]">
           <DialogHeader>
             <DialogTitle>
-              {fullscreenChart === 'acceleration' && `Série Temporal - Aceleração (Eixo ${axisFilter})`}
-              {fullscreenChart === 'frequency' && `Série Temporal - Frequência Dominante (Eixo ${axisFilter})`}
-              {fullscreenChart === 'distribution' && `Distribuição (Eixo ${axisFilter})`}
-              {fullscreenChart === 'beamComparison' && 'Comparação entre Vigas'}
+              {fullscreenChart === 'acceleration' && `Série Temporal - Aceleração (Eixo ${accelAxisFilter})`}
+              {fullscreenChart === 'frequency' && `Série Temporal - Frequência Dominante (Eixo ${freqAxisFilter})`}
+              {fullscreenChart === 'distribution' && `Distribuição - ${distDataTypeFilter} (Eixo ${distAxisFilter})`}
+              {fullscreenChart === 'beamComparison' && `Comparação entre Vigas (Eixo ${beamAxisFilter})`}
             </DialogTitle>
             <DialogDescription>Visualização expandida do gráfico</DialogDescription>
           </DialogHeader>
           <div className="flex-1 h-full min-h-[400px]">
-            <div className="flex items-center gap-4 mb-4">
-              {fullscreenChart !== 'beamComparison' && (
-                <Select value={axisFilter} onValueChange={(v: AxisFilter) => setAxisFilter(v)}>
+            <div className="flex items-center gap-4 mb-4 flex-wrap">
+              {fullscreenChart === 'acceleration' && (
+                <>
+                  <Select value={accelAxisFilter} onValueChange={(v: AccelerationAxis) => setAccelAxisFilter(v)}>
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="X">Eixo X</SelectItem>
+                      <SelectItem value="Y">Eixo Y</SelectItem>
+                      <SelectItem value="Z">Eixo Z</SelectItem>
+                      <SelectItem value="Todos">Todos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex border rounded-md overflow-hidden">
+                    <Button variant={metricFilter === 'RMS' ? 'default' : 'ghost'} size="sm" onClick={() => setMetricFilter('RMS')}>RMS</Button>
+                    <Button variant={metricFilter === 'Pico' ? 'default' : 'ghost'} size="sm" onClick={() => setMetricFilter('Pico')}>Pico</Button>
+                  </div>
+                </>
+              )}
+              {fullscreenChart === 'frequency' && (
+                <Select value={freqAxisFilter} onValueChange={(v: FrequencyAxis) => setFreqAxisFilter(v)}>
                   <SelectTrigger className="w-24">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="X">Eixo X</SelectItem>
                     <SelectItem value="Z">Eixo Z</SelectItem>
+                    <SelectItem value="Todos">Todos</SelectItem>
                   </SelectContent>
                 </Select>
               )}
-              {fullscreenChart === 'acceleration' && (
-                <div className="flex border rounded-md overflow-hidden">
-                  <Button
-                    variant={metricFilter === 'RMS' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setMetricFilter('RMS')}
-                  >
-                    RMS
-                  </Button>
-                  <Button
-                    variant={metricFilter === 'Pico' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setMetricFilter('Pico')}
-                  >
-                    Pico
-                  </Button>
-                </div>
+              {fullscreenChart === 'distribution' && (
+                <>
+                  <Select value={distAxisFilter} onValueChange={(v: AccelerationAxis) => setDistAxisFilter(v)}>
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="X">Eixo X</SelectItem>
+                      <SelectItem value="Y">Eixo Y</SelectItem>
+                      <SelectItem value="Z">Eixo Z</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={distDataTypeFilter} onValueChange={(v: DataTypeFilter) => setDistDataTypeFilter(v)}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Aceleração">Aceleração</SelectItem>
+                      <SelectItem value="Frequência">Frequência</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+              {fullscreenChart === 'beamComparison' && (
+                <>
+                  <Select value={beamAxisFilter} onValueChange={(v: FrequencyAxis) => setBeamAxisFilter(v)}>
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="X">Eixo X</SelectItem>
+                      <SelectItem value="Z">Eixo Z</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={beamSensor1} onValueChange={setBeamSensor1}>
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sensorSelectOptions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={beamSensor2} onValueChange={setBeamSensor2}>
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sensorSelectOptions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </>
               )}
             </div>
             <div className="h-[calc(100%-60px)]">
@@ -700,7 +867,7 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
                       <Button
                         variant={viewMode === 'chart' ? 'default' : 'ghost'}
                         size="sm"
-                        className="h-7 text-xs"
+                        className="h-7 text-xs rounded-none"
                         onClick={() => setViewMode('chart')}
                       >
                         Gráfico
@@ -708,7 +875,7 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
                       <Button
                         variant={viewMode === 'table' ? 'default' : 'ghost'}
                         size="sm"
-                        className="h-7 text-xs flex items-center gap-1"
+                        className="h-7 text-xs flex items-center gap-1 rounded-none"
                         onClick={() => setViewMode('table')}
                       >
                         <Table className="h-3 w-3" />
@@ -725,19 +892,30 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
                         <XAxis dataKey="time" tick={{ fontSize: 9 }} />
                         <YAxis domain={[0, 12]} tick={{ fontSize: 9 }} label={{ value: 'Aceleração (m/s²)', angle: -90, position: 'insideLeft', fontSize: 10 }} />
                         <Tooltip />
-                        <ReferenceLine y={0.3} stroke="hsl(var(--success))" strokeDasharray="5 5" />
-                        <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={false} />
-                        {hourlyData.map((entry, index) => (
-                          entry.isAnomaly && (
-                            <circle
-                              key={index}
-                              cx={`${(index / 23) * 100}%`}
-                              cy={entry.value}
-                              r={6}
-                              fill="hsl(var(--destructive))"
-                            />
-                          )
-                        ))}
+                        <ReferenceLine y={0.3} stroke="hsl(142, 76%, 36%)" strokeDasharray="5 5" />
+                        <Line 
+                          type="monotone" 
+                          dataKey="value" 
+                          stroke="hsl(var(--primary))" 
+                          strokeWidth={1.5} 
+                          dot={(props: any) => {
+                            const { cx, cy, payload } = props;
+                            if (payload.isAnomaly) {
+                              return (
+                                <circle
+                                  key={`dot-${payload.time}`}
+                                  cx={cx}
+                                  cy={cy}
+                                  r={6}
+                                  fill="hsl(var(--destructive))"
+                                  stroke="white"
+                                  strokeWidth={2}
+                                />
+                              );
+                            }
+                            return null;
+                          }}
+                        />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
