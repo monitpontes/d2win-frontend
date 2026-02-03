@@ -1,427 +1,602 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { mockBridges, mockUsers, mockSensors, mockEvents, mockCompanies, mockSystemStatus } from '@/data/mockData';
+import { mockBridges, mockUsers, mockSensors, mockCompanies } from '@/data/mockData';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { BarChart3, Users, Activity, AlertTriangle, Settings, FileDown, Plus, Pencil, Trash2, Download } from 'lucide-react';
+import { 
+  Building2, Users, Settings, Zap, Plus, Pencil, Trash2, Eye, Search, 
+  CheckCircle, AlertTriangle, XCircle, Clock 
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AdminSidebar } from '@/components/admin/AdminSidebar';
+import { BridgeDetailsDialog } from '@/components/admin/BridgeDetailsDialog';
+import { DeviceParametersDialog } from '@/components/admin/DeviceParametersDialog';
+import { toast } from 'sonner';
+import type { Bridge, Sensor } from '@/types';
+
+// Mock system failures data
+const mockSystemFailures = [
+  { id: 1, bridgeName: 'Ponte Rio Grande', type: 'Energia', sensor: 'TEMP-001', problem: 'Alta temperatura detectada no sensor.', time: '26/10/2023, 07:00:00', status: 'Resolvido' },
+  { id: 2, bridgeName: 'Ponte Ayrton Senna', type: 'Comunicação', sensor: 'VIB-005', problem: 'Perda de conexão com o sensor.', time: '20/10/2023, 11:30:00', status: 'Pendente' },
+  { id: 3, bridgeName: 'Ponte Rio Grande', type: 'Sensor', sensor: 'ACEL-002', problem: 'Leitura de aceleração inconsistente.', time: '15/10/2023, 05:15:00', status: 'Em andamento' },
+  { id: 4, bridgeName: 'Ponte Bandeirantes', type: 'Energia', sensor: 'TEMP-003', problem: 'Consumo de energia anormalmente alto.', time: '01/10/2023, 15:00:00', status: 'Pendente' },
+];
 
 export default function Admin() {
   const { hasRole } = useAuth();
-  const [selectedTab, setSelectedTab] = useState('overview');
+  const [selectedTab, setSelectedTab] = useState('bridges');
+  const [selectedCompanyId, setSelectedCompanyId] = useState('company-2');
+  const [searchBridge, setSearchBridge] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  
+  // Dialog states
+  const [selectedBridge, setSelectedBridge] = useState<Bridge | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<Sensor | null>(null);
+  const [isNewUserOpen, setIsNewUserOpen] = useState(false);
+  const [isNewBridgeOpen, setIsNewBridgeOpen] = useState(false);
+  const [isNewDeviceOpen, setIsNewDeviceOpen] = useState(false);
 
   const isAdmin = hasRole('admin');
+  const selectedCompany = mockCompanies.find(c => c.id === selectedCompanyId);
 
-  // Stats
-  const stats = {
-    bridges: mockBridges.length,
-    alertsActive: mockEvents.filter((e) => e.status !== 'resolved').length,
-    sensorsOnline: mockSystemStatus.sensors.online,
-    sensorsOffline: mockSystemStatus.sensors.offline,
-  };
+  // Filter data by selected company
+  const companyBridges = useMemo(() => {
+    return mockBridges.filter(b => b.companyId === selectedCompanyId);
+  }, [selectedCompanyId]);
 
-  const getRoleLabel = (role: string) => {
-    const labels: Record<string, string> = {
-      admin: 'Administrador',
-      gestor: 'Engenheiro',
-      viewer: 'Visualizador',
-    };
-    return labels[role] || role;
-  };
+  const companyUsers = useMemo(() => {
+    return mockUsers.filter(u => u.companyId === selectedCompanyId);
+  }, [selectedCompanyId]);
+
+  const companyDevices = useMemo(() => {
+    const bridgeIds = companyBridges.map(b => b.id);
+    return mockSensors.filter(s => bridgeIds.includes(s.bridgeId));
+  }, [companyBridges]);
+
+  // Filter bridges by search and status
+  const filteredBridges = useMemo(() => {
+    return companyBridges.filter(b => {
+      const matchesSearch = b.name.toLowerCase().includes(searchBridge.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || b.structuralStatus === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [companyBridges, searchBridge, statusFilter]);
 
   const getStatusBadge = (status: string) => {
     const configs: Record<string, { label: string; className: string }> = {
+      operacional: { label: 'Normal', className: 'bg-success text-success-foreground' },
+      atencao: { label: 'Alerta', className: 'bg-warning text-warning-foreground' },
+      restricoes: { label: 'Alerta', className: 'bg-warning text-warning-foreground' },
+      critico: { label: 'Crítica', className: 'bg-destructive text-destructive-foreground' },
+      interdicao: { label: 'Crítica', className: 'bg-destructive text-destructive-foreground' },
       active: { label: 'Ativo', className: 'bg-success text-success-foreground' },
       inactive: { label: 'Inativo', className: 'bg-muted text-muted-foreground' },
-      online: { label: 'Online', className: 'bg-success text-success-foreground' },
+      online: { label: 'Normal', className: 'bg-success text-success-foreground' },
       offline: { label: 'Offline', className: 'bg-muted text-muted-foreground' },
-      maintenance: { label: 'Manutenção', className: 'bg-warning text-warning-foreground' },
+      maintenance: { label: 'Alerta', className: 'bg-warning text-warning-foreground' },
     };
     const config = configs[status] || { label: status, className: 'bg-muted' };
     return <Badge className={config.className}>{config.label}</Badge>;
   };
 
+  const getFailureStatusBadge = (status: string) => {
+    const configs: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+      'Resolvido': { label: 'Resolvido', className: 'text-success', icon: <CheckCircle className="h-4 w-4" /> },
+      'Pendente': { label: 'Pendente', className: 'text-warning', icon: <AlertTriangle className="h-4 w-4" /> },
+      'Em andamento': { label: 'Em andamento', className: 'text-primary', icon: <Zap className="h-4 w-4" /> },
+    };
+    const config = configs[status] || { label: status, className: '', icon: null };
+    return (
+      <span className={cn("flex items-center gap-1 text-sm", config.className)}>
+        {config.icon}
+        {config.label}
+      </span>
+    );
+  };
+
+  const getTypeColor = (type: string) => {
+    const colors: Record<string, string> = {
+      'Energia': 'bg-warning/10 text-warning border-warning',
+      'Comunicação': 'bg-primary/10 text-primary border-primary',
+      'Sensor': 'bg-muted',
+    };
+    return colors[type] || 'bg-muted';
+  };
+
+  const getRoleBadge = (role: string) => {
+    const configs: Record<string, { label: string; className: string }> = {
+      admin: { label: 'Admin', className: 'bg-primary/10 text-primary' },
+      gestor: { label: 'Gestor', className: 'bg-muted' },
+      viewer: { label: 'Viewer', className: 'bg-muted' },
+    };
+    const config = configs[role] || { label: role, className: 'bg-muted' };
+    return <Badge variant="outline" className={config.className}>{config.label}</Badge>;
+  };
+
+  // System performance stats
+  const systemStats = {
+    energy: { percentage: 98.5, failures: 2 },
+    communication: { percentage: 96.8, failures: 5 },
+    sensors: { percentage: 97.2, failures: 4 },
+  };
+
   return (
-    <div className="flex-1 overflow-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground">Administração</h1>
-        <p className="text-muted-foreground">Gerencie usuários, dispositivos e configurações do sistema</p>
-      </div>
+    <div className="flex min-h-screen">
+      {/* Sidebar */}
+      <AdminSidebar 
+        selectedCompanyId={selectedCompanyId} 
+        onSelectCompany={setSelectedCompanyId} 
+      />
 
-      <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="overview">
-            <BarChart3 className="mr-2 h-4 w-4" />
-            Visão Geral
-          </TabsTrigger>
-          <TabsTrigger value="users">
-            <Users className="mr-2 h-4 w-4" />
-            Usuários
-          </TabsTrigger>
-          <TabsTrigger value="devices">
-            <Settings className="mr-2 h-4 w-4" />
-            Dispositivos
-          </TabsTrigger>
-          <TabsTrigger value="export">
-            <FileDown className="mr-2 h-4 w-4" />
-            Exportação
-          </TabsTrigger>
-        </TabsList>
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto">
+        {/* Header */}
+        <div className="border-b bg-card p-6">
+          <h1 className="text-2xl font-bold">Painel Administrativo</h1>
+          <p className="text-muted-foreground">Gerenciando: <span className="text-primary font-medium">{selectedCompany?.name}</span></p>
+        </div>
 
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          {/* Stats Cards */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <Activity className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{stats.bridges}</p>
-                  <p className="text-sm text-muted-foreground">Pontes Monitoradas</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
-                  <AlertTriangle className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{stats.alertsActive}</p>
-                  <p className="text-sm text-muted-foreground">Alertas Ativos</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10 text-success">
-                  <Activity className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{stats.sensorsOnline}</p>
-                  <p className="text-sm text-muted-foreground">Sensores Online</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                  <Activity className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{stats.sensorsOffline}</p>
-                  <p className="text-sm text-muted-foreground">Sensores Offline</p>
-                </div>
-              </CardContent>
-            </Card>
+        {/* Tabs */}
+        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1">
+          <div className="border-b bg-card">
+            <TabsList className="h-14 w-full justify-stretch gap-0 rounded-none bg-transparent p-0">
+              <TabsTrigger 
+                value="bridges" 
+                className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+              >
+                <Building2 className="h-4 w-4 mr-2" />
+                Pontes
+              </TabsTrigger>
+              <TabsTrigger 
+                value="users" 
+                className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+              >
+                <Users className="h-4 w-4 mr-2" />
+                Usuários
+              </TabsTrigger>
+              <TabsTrigger 
+                value="devices" 
+                className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Dispositivos
+              </TabsTrigger>
+              <TabsTrigger 
+                value="system" 
+                className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                Sistema
+              </TabsTrigger>
+            </TabsList>
           </div>
 
-          {/* System Failures */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Falhas do Sistema</CardTitle>
-              <CardDescription>Últimas falhas detectadas no sistema</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {mockSystemStatus.failures.map((failure) => (
-                  <div key={failure.id} className="flex items-center justify-between rounded-lg border p-3">
-                    <div className="flex items-center gap-3">
-                      <AlertTriangle className={cn(
-                        'h-5 w-5',
-                        failure.severity === 'high' || failure.severity === 'critical' ? 'text-destructive' : 'text-warning'
-                      )} />
-                      <div>
-                        <p className="font-medium">{failure.description}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(failure.timestamp).toLocaleString('pt-BR')}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge variant="outline" className={failure.severity === 'high' ? 'text-destructive' : 'text-warning'}>
-                      {failure.severity === 'high' ? 'Alta' : failure.severity === 'medium' ? 'Média' : 'Baixa'}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Users Tab */}
-        <TabsContent value="users" className="space-y-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Usuários</CardTitle>
-                <CardDescription>Gerenciamento de usuários do sistema</CardDescription>
-              </div>
-              {isAdmin && (
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Novo Usuário
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Novo Usuário</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Nome</Label>
-                        <Input id="name" placeholder="Nome completo" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="email">E-mail</Label>
-                        <Input id="email" type="email" placeholder="email@empresa.com" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="role">Perfil</Label>
-                        <Select>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione um perfil" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="viewer">Visualizador</SelectItem>
-                            <SelectItem value="gestor">Engenheiro</SelectItem>
-                            <SelectItem value="admin">Administrador</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="company">Empresa</Label>
-                        <Select>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione uma empresa" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {mockCompanies.map((company) => (
-                              <SelectItem key={company.id} value={company.id}>
-                                {company.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Button className="w-full">Salvar</Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>E-mail</TableHead>
-                    <TableHead>Perfil</TableHead>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockUsers.map((user) => {
-                    const company = mockCompanies.find((c) => c.id === user.companyId);
-                    return (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>{getRoleLabel(user.role)}</TableCell>
-                        <TableCell>{company?.name || '-'}</TableCell>
-                        <TableCell>{getStatusBadge(user.status)}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon">
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            {isAdmin && (
-                              <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Devices Tab */}
-        <TabsContent value="devices" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Dispositivos e Sensores</CardTitle>
-              <CardDescription>Configuração de sensores e parâmetros</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Ponte</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Intervalo (ms)</TableHead>
-                    <TableHead>Limite Alerta</TableHead>
-                    <TableHead>Limite Crítico</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockSensors.map((sensor) => {
-                    const bridge = mockBridges.find((b) => b.id === sensor.bridgeId);
-                    return (
-                      <TableRow key={sensor.id}>
-                        <TableCell className="font-medium">{sensor.name}</TableCell>
-                        <TableCell>{bridge?.name || '-'}</TableCell>
-                        <TableCell className="capitalize">
-                          {sensor.type === 'acceleration' ? 'Aceleração' : sensor.type === 'frequency' ? 'Frequência' : 'Caixa Comando'}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(sensor.status)}</TableCell>
-                        <TableCell>{sensor.acquisitionInterval}</TableCell>
-                        <TableCell>{sensor.alertThreshold} {sensor.lastReading.unit}</TableCell>
-                        <TableCell>{sensor.criticalThreshold} {sensor.lastReading.unit}</TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon">
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Export Tab */}
-        <TabsContent value="export" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Exportação de Dados</CardTitle>
-              <CardDescription>Exporte dados do sistema em diferentes formatos</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-semibold">Dados de Sensores</h3>
-                        <p className="text-sm text-muted-foreground">Exportar leituras dos sensores</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm">
-                          <Download className="mr-2 h-4 w-4" />
-                          CSV
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <Download className="mr-2 h-4 w-4" />
-                          JSON
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-semibold">Eventos e Alertas</h3>
-                        <p className="text-sm text-muted-foreground">Exportar histórico de eventos</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm">
-                          <Download className="mr-2 h-4 w-4" />
-                          CSV
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <Download className="mr-2 h-4 w-4" />
-                          JSON
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+          <div className="p-6">
+            {/* Bridges Tab */}
+            <TabsContent value="bridges" className="m-0 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Gerenciamento de Pontes - {selectedCompany?.name}</h2>
+                <Button onClick={() => setIsNewBridgeOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nova Ponte
+                </Button>
               </div>
 
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Gerar Relatório</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label>Ponte</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione uma ponte" />
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base">Pontes - {selectedCompany?.name}</CardTitle>
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                          placeholder="Buscar ponte..."
+                          className="pl-9 w-48"
+                          value={searchBridge}
+                          onChange={(e) => setSearchBridge(e.target.value)}
+                        />
+                      </div>
+                      <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger className="w-28">
+                          <SelectValue placeholder="Status" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">Todas</SelectItem>
-                          {mockBridges.map((bridge) => (
-                            <SelectItem key={bridge.id} value={bridge.id}>
-                              {bridge.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Período</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o período" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="7d">Últimos 7 dias</SelectItem>
-                          <SelectItem value="30d">Últimos 30 dias</SelectItem>
-                          <SelectItem value="90d">Últimos 90 dias</SelectItem>
-                          <SelectItem value="custom">Personalizado</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Formato</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o formato" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pdf">PDF</SelectItem>
-                          <SelectItem value="excel">Excel</SelectItem>
+                          <SelectItem value="all">Todos</SelectItem>
+                          <SelectItem value="operacional">Normal</SelectItem>
+                          <SelectItem value="atencao">Alerta</SelectItem>
+                          <SelectItem value="critico">Crítico</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-                  <Button>
-                    <FileDown className="mr-2 h-4 w-4" />
-                    Gerar Relatório
-                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {filteredBridges.map((bridge) => (
+                      <Card key={bridge.id} className="relative overflow-hidden">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <h3 className="font-semibold">{bridge.name}</h3>
+                              <p className="text-xs text-muted-foreground">{bridge.id.replace('bridge-', 'A-P')}</p>
+                            </div>
+                            {getStatusBadge(bridge.structuralStatus)}
+                          </div>
+                          <div className="space-y-1 text-sm mb-4">
+                            <p><span className="font-medium">Local:</span> {bridge.location}</p>
+                            <p><span className="font-medium">Sensores:</span> {bridge.sensorCount}</p>
+                            <p><span className="font-medium">Atualizado:</span> {bridge.lastUpdate}</p>
+                          </div>
+                          <Button 
+                            className="w-full"
+                            onClick={() => setSelectedBridge(bridge)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Ver Detalhes
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            </TabsContent>
+
+            {/* Users Tab */}
+            <TabsContent value="users" className="m-0 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Gerenciamento de Usuários - {selectedCompany?.name}</h2>
+                {isAdmin && (
+                  <Button onClick={() => setIsNewUserOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Novo Usuário
+                  </Button>
+                )}
+              </div>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Papel</TableHead>
+                        <TableHead>Último Acesso</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {companyUsers.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium">{user.name}</TableCell>
+                          <TableCell>{user.email}</TableCell>
+                          <TableCell>{getRoleBadge(user.role)}</TableCell>
+                          <TableCell>{new Date(user.createdAt).toLocaleString('pt-BR')}</TableCell>
+                          <TableCell>{getStatusBadge(user.status)}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              {isAdmin && (
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Devices Tab */}
+            <TabsContent value="devices" className="m-0 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Dispositivos & Parâmetros - {selectedCompany?.name}</h2>
+                <Button onClick={() => setIsNewDeviceOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Dispositivo
+                </Button>
+              </div>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ID do Dispositivo</TableHead>
+                        <TableHead>Ponte</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Última Comunicação</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {companyDevices.map((device) => {
+                        const bridge = mockBridges.find(b => b.id === device.bridgeId);
+                        return (
+                          <TableRow key={device.id}>
+                            <TableCell className="font-medium text-primary">{device.name}</TableCell>
+                            <TableCell className="text-primary">{bridge?.id.replace('bridge-', 'A-P')}</TableCell>
+                            <TableCell>{device.type === 'frequency' ? 'Frequencia' : 'Aceleracao'}</TableCell>
+                            <TableCell>{getStatusBadge(device.status)}</TableCell>
+                            <TableCell>{new Date(device.lastReading.timestamp).toLocaleString('pt-BR')}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-8 w-8"
+                                  onClick={() => setSelectedDevice(device)}
+                                >
+                                  <Settings className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* System Tab */}
+            <TabsContent value="system" className="m-0 space-y-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-5 w-5" />
+                    <div>
+                      <CardTitle>Desempenho do Sistema de Sensores</CardTitle>
+                      <CardDescription>Resumo operacional dos últimos 30 dias</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <Card className="border-l-4 border-l-success">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Energia</p>
+                            <p className="text-3xl font-bold text-primary">{systemStats.energy.percentage}%</p>
+                            <p className="text-xs text-primary">{systemStats.energy.failures} falhas registradas</p>
+                          </div>
+                          <CheckCircle className="h-5 w-5 text-success" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-l-4 border-l-success">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Comunicação</p>
+                            <p className="text-3xl font-bold text-primary">{systemStats.communication.percentage}%</p>
+                            <p className="text-xs text-primary">{systemStats.communication.failures} falhas registradas</p>
+                          </div>
+                          <CheckCircle className="h-5 w-5 text-success" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-l-4 border-l-success">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Sensores</p>
+                            <p className="text-3xl font-bold text-primary">{systemStats.sensors.percentage}%</p>
+                            <p className="text-xs text-primary">{systemStats.sensors.failures} falhas registradas</p>
+                          </div>
+                          <CheckCircle className="h-5 w-5 text-success" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Registro de Falhas do Sistema (Últimos 30 dias)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {mockSystemFailures.map((failure) => (
+                      <div key={failure.id} className="rounded-lg border p-4">
+                        <div className="grid gap-4 md:grid-cols-6 items-center">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Ponte</p>
+                            <p className="font-medium">{failure.bridgeName}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Tipo</p>
+                            <Badge variant="outline" className={getTypeColor(failure.type)}>
+                              {failure.type}
+                            </Badge>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Sensor</p>
+                            <p className="font-mono text-sm">{failure.sensor}</p>
+                          </div>
+                          <div className="md:col-span-2">
+                            <p className="text-xs text-muted-foreground">Problema</p>
+                            <p className="text-sm">{failure.problem}</p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <p className="text-xs text-muted-foreground">{failure.time}</p>
+                            {getFailureStatusBadge(failure.status)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </div>
+        </Tabs>
+      </div>
+
+      {/* Dialogs */}
+      <BridgeDetailsDialog
+        bridge={selectedBridge}
+        open={!!selectedBridge}
+        onOpenChange={(open) => !open && setSelectedBridge(null)}
+      />
+
+      <DeviceParametersDialog
+        device={selectedDevice}
+        open={!!selectedDevice}
+        onOpenChange={(open) => !open && setSelectedDevice(null)}
+      />
+
+      {/* New User Dialog */}
+      <Dialog open={isNewUserOpen} onOpenChange={setIsNewUserOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo Usuário</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Nome</Label>
+              <Input id="name" placeholder="Nome completo" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">E-mail</Label>
+              <Input id="email" type="email" placeholder="email@empresa.com" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="role">Perfil</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um perfil" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="viewer">Visualizador</SelectItem>
+                  <SelectItem value="gestor">Gestor</SelectItem>
+                  <SelectItem value="admin">Administrador</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNewUserOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => { 
+              toast.success('Usuário criado com sucesso!'); 
+              setIsNewUserOpen(false); 
+            }}>
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Bridge Dialog */}
+      <Dialog open={isNewBridgeOpen} onOpenChange={setIsNewBridgeOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nova Ponte</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input placeholder="Nome da ponte" />
+            </div>
+            <div className="space-y-2">
+              <Label>Localização</Label>
+              <Input placeholder="Localização" />
+            </div>
+            <div className="space-y-2">
+              <Label>Rodovia</Label>
+              <Input placeholder="Ex: SP-150" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNewBridgeOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => { 
+              toast.success('Ponte criada com sucesso!'); 
+              setIsNewBridgeOpen(false); 
+            }}>
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Device Dialog */}
+      <Dialog open={isNewDeviceOpen} onOpenChange={setIsNewDeviceOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo Dispositivo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>ID do Dispositivo</Label>
+              <Input placeholder="Ex: A-P1-S1" />
+            </div>
+            <div className="space-y-2">
+              <Label>Ponte</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma ponte" />
+                </SelectTrigger>
+                <SelectContent>
+                  {companyBridges.map((bridge) => (
+                    <SelectItem key={bridge.id} value={bridge.id}>
+                      {bridge.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Tipo</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="frequency">Frequência</SelectItem>
+                  <SelectItem value="acceleration">Aceleração</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNewDeviceOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => { 
+              toast.success('Dispositivo criado com sucesso!'); 
+              setIsNewDeviceOpen(false); 
+            }}>
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
