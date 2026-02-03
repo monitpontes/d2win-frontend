@@ -10,16 +10,18 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   Building2, Users, Settings, Zap, Plus, Pencil, Trash2, Eye, Search, 
-  CheckCircle, AlertTriangle, XCircle, Clock 
+  CheckCircle, AlertTriangle, XCircle, Clock, Mail, Shield, UserCheck, UserX
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { BridgeDetailsDialog } from '@/components/admin/BridgeDetailsDialog';
 import { DeviceParametersDialog } from '@/components/admin/DeviceParametersDialog';
+import { EditUserDialog } from '@/components/admin/EditUserDialog';
 import { toast } from 'sonner';
-import type { Bridge, Sensor } from '@/types';
+import type { Bridge, Sensor, User } from '@/types';
 
 // Mock system failures data
 const mockSystemFailures = [
@@ -34,11 +36,14 @@ export default function Admin() {
   const [selectedTab, setSelectedTab] = useState('bridges');
   const [selectedCompanyId, setSelectedCompanyId] = useState('company-2');
   const [searchBridge, setSearchBridge] = useState('');
+  const [searchUser, setSearchUser] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [roleFilter, setRoleFilter] = useState('all');
   
   // Dialog states
   const [selectedBridge, setSelectedBridge] = useState<Bridge | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<Sensor | null>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isNewUserOpen, setIsNewUserOpen] = useState(false);
   const [isNewBridgeOpen, setIsNewBridgeOpen] = useState(false);
   const [isNewDeviceOpen, setIsNewDeviceOpen] = useState(false);
@@ -52,8 +57,21 @@ export default function Admin() {
   }, [selectedCompanyId]);
 
   const companyUsers = useMemo(() => {
-    return mockUsers.filter(u => u.companyId === selectedCompanyId);
-  }, [selectedCompanyId]);
+    let users = mockUsers.filter(u => u.companyId === selectedCompanyId);
+    
+    if (searchUser) {
+      users = users.filter(u => 
+        u.name.toLowerCase().includes(searchUser.toLowerCase()) ||
+        u.email.toLowerCase().includes(searchUser.toLowerCase())
+      );
+    }
+    
+    if (roleFilter !== 'all') {
+      users = users.filter(u => u.role === roleFilter);
+    }
+    
+    return users;
+  }, [selectedCompanyId, searchUser, roleFilter]);
 
   const companyDevices = useMemo(() => {
     const bridgeIds = companyBridges.map(b => b.id);
@@ -68,6 +86,19 @@ export default function Admin() {
       return matchesSearch && matchesStatus;
     });
   }, [companyBridges, searchBridge, statusFilter]);
+
+  // User stats
+  const userStats = useMemo(() => {
+    const allUsers = mockUsers.filter(u => u.companyId === selectedCompanyId);
+    return {
+      total: allUsers.length,
+      active: allUsers.filter(u => u.status === 'active').length,
+      inactive: allUsers.filter(u => u.status === 'inactive').length,
+      admins: allUsers.filter(u => u.role === 'admin').length,
+      gestores: allUsers.filter(u => u.role === 'gestor').length,
+      viewers: allUsers.filter(u => u.role === 'viewer').length,
+    };
+  }, [selectedCompanyId]);
 
   const getStatusBadge = (status: string) => {
     const configs: Record<string, { label: string; className: string }> = {
@@ -251,53 +282,179 @@ export default function Admin() {
 
             {/* Users Tab */}
             <TabsContent value="users" className="m-0 space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Gerenciamento de Usuários - {selectedCompany?.name}</h2>
-                {isAdmin && (
-                  <Button onClick={() => setIsNewUserOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Novo Usuário
-                  </Button>
-                )}
+              {/* Stats Cards */}
+              <div className="grid gap-4 md:grid-cols-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Total de Usuários</p>
+                        <p className="text-2xl font-bold">{userStats.total}</p>
+                      </div>
+                      <Users className="h-8 w-8 text-muted-foreground/50" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Ativos</p>
+                        <p className="text-2xl font-bold text-success">{userStats.active}</p>
+                      </div>
+                      <UserCheck className="h-8 w-8 text-success/50" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Inativos</p>
+                        <p className="text-2xl font-bold text-muted-foreground">{userStats.inactive}</p>
+                      </div>
+                      <UserX className="h-8 w-8 text-muted-foreground/50" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1">
+                        <p className="text-sm text-muted-foreground">Por Perfil</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" className="bg-primary/10 text-primary text-xs">
+                            {userStats.admins} Admin
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {userStats.gestores} Gestor
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {userStats.viewers} Viewer
+                          </Badge>
+                        </div>
+                      </div>
+                      <Shield className="h-8 w-8 text-muted-foreground/50" />
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
 
+              {/* Users Table */}
               <Card>
-                <CardContent className="pt-6">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Nome</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Papel</TableHead>
-                        <TableHead>Último Acesso</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {companyUsers.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">{user.name}</TableCell>
-                          <TableCell>{user.email}</TableCell>
-                          <TableCell>{getRoleBadge(user.role)}</TableCell>
-                          <TableCell>{new Date(user.createdAt).toLocaleString('pt-BR')}</TableCell>
-                          <TableCell>{getStatusBadge(user.status)}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              {isAdmin && (
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-lg">Usuários - {selectedCompany?.name}</CardTitle>
+                      <CardDescription>Gerencie os usuários e permissões de acesso</CardDescription>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                          placeholder="Buscar usuário..."
+                          className="pl-9 w-56"
+                          value={searchUser}
+                          onChange={(e) => setSearchUser(e.target.value)}
+                        />
+                      </div>
+                      <Select value={roleFilter} onValueChange={setRoleFilter}>
+                        <SelectTrigger className="w-36">
+                          <SelectValue placeholder="Filtrar perfil" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos os perfis</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="gestor">Gestor</SelectItem>
+                          <SelectItem value="viewer">Viewer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {isAdmin && (
+                        <Button onClick={() => setIsNewUserOpen(true)}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Novo Usuário
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {companyUsers.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>Nenhum usuário encontrado</p>
+                      <p className="text-sm">Tente ajustar os filtros de busca</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[280px]">Usuário</TableHead>
+                          <TableHead>Perfil</TableHead>
+                          <TableHead>Último Acesso</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {companyUsers.map((user) => (
+                          <TableRow key={user.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-9 w-9">
+                                  <AvatarImage src={user.avatar} />
+                                  <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <p className="font-medium">{user.name}</p>
+                                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                    <Mail className="h-3 w-3" />
+                                    {user.email}
+                                  </p>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>{getRoleBadge(user.role)}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {new Date(user.createdAt).toLocaleString('pt-BR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </TableCell>
+                            <TableCell>{getStatusBadge(user.status)}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-8 px-3"
+                                  onClick={() => setSelectedUser(user)}
+                                >
+                                  <Pencil className="h-4 w-4 mr-1" />
+                                  Editar
+                                </Button>
+                                {isAdmin && (
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() => toast.error('Funcionalidade de exclusão em breve')}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -468,25 +625,39 @@ export default function Admin() {
         onOpenChange={(open) => !open && setSelectedDevice(null)}
       />
 
+      {/* Edit User Dialog */}
+      <EditUserDialog
+        user={selectedUser}
+        open={!!selectedUser}
+        onOpenChange={(open) => !open && setSelectedUser(null)}
+        onSave={(updatedUser) => {
+          console.log('User updated:', updatedUser);
+        }}
+      />
+
       {/* New User Dialog */}
       <Dialog open={isNewUserOpen} onOpenChange={setIsNewUserOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Novo Usuário</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Nome</Label>
-              <Input id="name" placeholder="Nome completo" />
+              <Label htmlFor="new-name">Nome</Label>
+              <Input id="new-name" placeholder="Nome completo" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">E-mail</Label>
-              <Input id="email" type="email" placeholder="email@empresa.com" />
+              <Label htmlFor="new-email">E-mail</Label>
+              <Input id="new-email" type="email" placeholder="email@empresa.com" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="role">Perfil</Label>
+              <Label htmlFor="new-password">Senha</Label>
+              <Input id="new-password" type="password" placeholder="Senha inicial" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-role">Perfil</Label>
               <Select>
-                <SelectTrigger>
+                <SelectTrigger id="new-role">
                   <SelectValue placeholder="Selecione um perfil" />
                 </SelectTrigger>
                 <SelectContent>
