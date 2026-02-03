@@ -8,8 +8,13 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, ReferenceLine, Scatter, ComposedChart } from 'recharts';
-import { Filter, Download, AlertTriangle, TrendingUp, TrendingDown, Maximize2, Calendar, Table, CheckCircle } from 'lucide-react';
+import { Filter, Download, AlertTriangle, TrendingUp, TrendingDown, Maximize2, Calendar, Table, CheckCircle, FileDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { exportChartData, exportToJSON } from '@/lib/exportUtils';
+import { toast } from 'sonner';
+import { mockBridges } from '@/data/mockData';
+import { CreateInterventionDialog } from '@/components/interventions/CreateInterventionDialog';
+import { useInterventions, type NewIntervention } from '@/hooks/useInterventions';
 
 interface DataAnalysisSectionProps {
   bridgeId: string;
@@ -53,6 +58,10 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
   const [metricFilter, setMetricFilter] = useState<MetricFilter>('RMS');
   const [fullscreenChart, setFullscreenChart] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<AnomalyEvent | null>(null);
+  const [isInterventionDialogOpen, setIsInterventionDialogOpen] = useState(false);
+  
+  const { addIntervention } = useInterventions();
+  const bridge = mockBridges.find(b => b.id === bridgeId);
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
 
   // Mock anomaly event
@@ -348,10 +357,44 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
               <Filter className="h-4 w-4" />
               Filtros de Análise
             </CardTitle>
-            <Button variant="destructive" size="sm">
-              <Download className="h-4 w-4 mr-1" />
-              Limpar
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  exportChartData(bridgeId, bridge?.name || 'ponte', 'acceleration', 30);
+                  toast.success('Exportando dados de aceleração...');
+                }}
+              >
+                <FileDown className="h-4 w-4 mr-1" />
+                Aceleração CSV
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  exportChartData(bridgeId, bridge?.name || 'ponte', 'frequency', 30);
+                  toast.success('Exportando dados de frequência...');
+                }}
+              >
+                <FileDown className="h-4 w-4 mr-1" />
+                Frequência CSV
+              </Button>
+              <Button 
+                variant="destructive" 
+                size="sm"
+                onClick={() => {
+                  setSelectedSensors(['Todos', 'T1 Freq N', 'T1 Freq S', 'T1 AccN', 'S4 AccN', 'T Flow']);
+                  setDataType(['Ambos']);
+                  setPeriod('30d');
+                  setAggregation('1 sem');
+                  setShowAnomalies(true);
+                  toast.info('Filtros resetados');
+                }}
+              >
+                Limpar
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -936,8 +979,15 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
                     <div>
                       <h4 className="font-semibold">Agendar Intervenção</h4>
                       <p className="text-sm text-muted-foreground">Este evento requer verificação? Deseja agendar uma intervenção para inspeção?</p>
-                      <Button className="mt-3" size="sm">
-                        Avaliar Agendamento
+                      <Button 
+                        className="mt-3" 
+                        size="sm"
+                        onClick={() => {
+                          setSelectedEvent(null);
+                          setIsInterventionDialogOpen(true);
+                        }}
+                      >
+                        Agendar Intervenção
                       </Button>
                     </div>
                   </div>
@@ -953,6 +1003,17 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Create Intervention Dialog */}
+      <CreateInterventionDialog
+        open={isInterventionDialogOpen}
+        onOpenChange={setIsInterventionDialogOpen}
+        onSubmit={(data: NewIntervention) => {
+          addIntervention(data);
+          toast.success('Intervenção criada com sucesso!');
+        }}
+        defaultBridgeId={bridgeId}
+      />
     </div>
   );
 }
