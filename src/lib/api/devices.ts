@@ -18,6 +18,13 @@ export interface ApiDevice {
   alertThreshold?: number;
   criticalThreshold?: number;
   isActive?: boolean;
+  // Additional device params for update
+  samples?: number;
+  samplingFreq?: number;
+  activityThreshold?: number;
+  operationMode?: string;
+  executionMode?: string;
+  testMode?: string;
 }
 
 // Mapeia dispositivo da API para formato do frontend
