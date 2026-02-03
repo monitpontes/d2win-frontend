@@ -15,6 +15,8 @@ export function useCompanies() {
     queryKey: ['companies'],
     queryFn: companiesService.getCompanies,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 2,
+    retryDelay: 1000,
   });
 
   const createMutation = useMutation({

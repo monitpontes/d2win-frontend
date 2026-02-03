@@ -65,9 +65,17 @@ export function mapApiBridgeToBridge(apiBridge: ApiBridge): Bridge {
 }
 
 export async function getBridges(companyId?: string): Promise<Bridge[]> {
-  const params = companyId ? { company_id: companyId } : {};
-  const response = await api.get<ApiBridge[]>('/bridges', { params });
-  return response.data.map(mapApiBridgeToBridge);
+  try {
+    const params = companyId ? { company_id: companyId } : {};
+    console.log('[Bridges] Fetching with params:', params);
+    const response = await api.get<ApiBridge[]>('/bridges', { params });
+    console.log('[Bridges] Raw response:', response.data);
+    console.log('[Bridges] Count:', response.data?.length || 0);
+    return response.data.map(mapApiBridgeToBridge);
+  } catch (error) {
+    console.error('[Bridges] Error fetching:', error);
+    throw error;
+  }
 }
 
 export async function getBridge(id: string): Promise<Bridge> {
