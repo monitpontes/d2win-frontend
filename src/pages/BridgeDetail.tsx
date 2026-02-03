@@ -254,79 +254,81 @@ export default function BridgeDetail() {
                     <h4 className="font-medium">Dados dos Sensores</h4>
                     {selectedSensor3D ? (
                       <div className="space-y-4">
-                        <div className="space-y-3 rounded-lg border bg-card p-4">
-                          <div className="grid grid-cols-2 gap-3 text-sm border-b pb-3">
-                            <div>
-                              <p className="text-muted-foreground text-xs">Nome:</p>
-                              <p className="font-medium text-right">{bridge.id.replace('bridge-', 'A-P')}-{selectedSensor3D.id}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground text-xs">Posição:</p>
-                              <p className="font-medium text-right">Posição {selectedSensor3D.id}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground text-xs">Tipo:</p>
-                              <p className="font-medium text-right">{selectedSensor3D.type}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground text-xs">Status:</p>
-                              <div className="flex items-center justify-end gap-1">
-                                <span className={cn(
-                                  "w-2 h-2 rounded-full",
-                                  selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' 
-                                    ? 'bg-destructive' 
-                                    : selectedSensor3D.status === 'warning' 
-                                    ? 'bg-warning' 
-                                    : 'bg-success'
-                                )} />
-                                <Badge variant={
-                                  selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' 
-                                    ? 'destructive' 
-                                    : selectedSensor3D.status === 'warning' 
-                                    ? 'outline' 
-                                    : 'secondary'
-                                } className="text-xs">
-                                  {selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' ? 'Alerta' : 
-                                   selectedSensor3D.status === 'warning' ? 'Atenção' : 'Normal'}
-                                </Badge>
-                              </div>
+                        <div className="space-y-2 rounded-lg border bg-card p-4">
+                          {/* Info rows - one per line */}
+                          <div className="flex justify-between items-center py-1 border-b">
+                            <span className="text-muted-foreground text-sm">Nome:</span>
+                            <span className="font-medium text-sm">{bridge.id.replace('bridge-', 'A-P')}-{selectedSensor3D.id}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-1 border-b">
+                            <span className="text-muted-foreground text-sm">Posição:</span>
+                            <span className="font-medium text-sm text-primary">Posição {selectedSensor3D.id}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-1 border-b">
+                            <span className="text-muted-foreground text-sm">Tipo:</span>
+                            <span className="font-medium text-sm text-primary">{selectedSensor3D.type}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-1 border-b">
+                            <span className="text-muted-foreground text-sm">Status:</span>
+                            <div className="flex items-center gap-1">
+                              <span className={cn(
+                                "w-2 h-2 rounded-full",
+                                selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' 
+                                  ? 'bg-destructive' 
+                                  : selectedSensor3D.status === 'warning' 
+                                  ? 'bg-warning' 
+                                  : 'bg-success'
+                              )} />
+                              <Badge variant={
+                                selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' 
+                                  ? 'destructive' 
+                                  : selectedSensor3D.status === 'warning' 
+                                  ? 'outline' 
+                                  : 'secondary'
+                              } className="text-xs">
+                                {selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' ? 'Alerta' : 
+                                 selectedSensor3D.status === 'warning' ? 'Atenção' : 'Normal'}
+                              </Badge>
                             </div>
                           </div>
+                          
                           {selectedSensor3D.deviceType === 'frequencia' && (
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-muted-foreground text-xs">Frequência Eixo X:</p>
-                                <p className="font-bold text-right">{selectedSensor3D.frequency1?.toFixed(2)} Hz</p>
+                            <>
+                              <div className="flex justify-between items-center py-1 border-b">
+                                <span className="text-muted-foreground text-sm">Frequência Eixo X:</span>
+                                <span className="font-bold text-sm">{selectedSensor3D.frequency1?.toFixed(2)} Hz</span>
                               </div>
-                              <div>
-                                <p className="text-muted-foreground text-xs">Magnitude Pico X:</p>
-                                <p className="font-medium text-right">{((selectedSensor3D.frequency1 || 3.5) * 5.5).toFixed(2)}</p>
+                              <div className="flex justify-between items-center py-1 border-b">
+                                <span className="text-muted-foreground text-sm">Magnitude Pico X:</span>
+                                <span className="font-medium text-sm">{((selectedSensor3D.frequency1 || 3.5) * 5.5).toFixed(2)}</span>
                               </div>
-                              <div>
-                                <p className="text-muted-foreground text-xs">Frequência Eixo Z:</p>
-                                <p className="font-bold text-right">{selectedSensor3D.frequency2?.toFixed(2)} Hz</p>
+                              <div className="flex justify-between items-center py-1 border-b">
+                                <span className="text-muted-foreground text-sm">Frequência Eixo Z:</span>
+                                <span className="font-bold text-sm">{selectedSensor3D.frequency2?.toFixed(2)} Hz</span>
                               </div>
-                              <div>
-                                <p className="text-muted-foreground text-xs">Magnitude Pico Z:</p>
-                                <p className="font-medium text-right">{((selectedSensor3D.frequency2 || 3.2) * 6.8).toFixed(2)}</p>
+                              <div className="flex justify-between items-center py-1 border-b">
+                                <span className="text-muted-foreground text-sm">Magnitude Pico Z:</span>
+                                <span className="font-medium text-sm">{((selectedSensor3D.frequency2 || 3.2) * 6.8).toFixed(2)}</span>
                               </div>
-                            </div>
+                            </>
                           )}
+                          
                           {selectedSensor3D.deviceType === 'aceleracao' && (
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-muted-foreground text-xs">Aceleração Eixo X:</p>
-                                <p className="font-bold text-right">{selectedSensor3D.acceleration?.toFixed(2)} m/s²</p>
+                            <>
+                              <div className="flex justify-between items-center py-1 border-b">
+                                <span className="text-muted-foreground text-sm">Aceleração Eixo X:</span>
+                                <span className="font-bold text-sm">{selectedSensor3D.acceleration?.toFixed(2)} m/s²</span>
                               </div>
-                              <div>
-                                <p className="text-muted-foreground text-xs">Aceleração Eixo Z:</p>
-                                <p className="font-bold text-right">{((selectedSensor3D.acceleration || 0.15) * 1.2).toFixed(2)} m/s²</p>
+                              <div className="flex justify-between items-center py-1 border-b">
+                                <span className="text-muted-foreground text-sm">Aceleração Eixo Z:</span>
+                                <span className="font-bold text-sm">{((selectedSensor3D.acceleration || 0.15) * 1.2).toFixed(2)} m/s²</span>
                               </div>
-                            </div>
+                            </>
                           )}
-                          <div className="pt-2 border-t text-sm">
-                            <p className="text-muted-foreground text-xs">Timestamp:</p>
-                            <p className="font-mono text-xs text-right">{selectedSensor3D.timestamp}</p>
+                          
+                          <div className="flex justify-between items-center py-1">
+                            <span className="text-muted-foreground text-sm">Timestamp:</span>
+                            <span className="font-mono text-xs">{selectedSensor3D.timestamp}</span>
                           </div>
                         </div>
 
