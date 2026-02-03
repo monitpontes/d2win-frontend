@@ -220,10 +220,13 @@ export default function BridgeDetail() {
               {bridge.structuralStatus === 'critico' ? 'Crítico' : structuralStatusConfig.label}
             </Badge>
             {needsIntervention && (
-              <span className="flex items-center gap-1 text-sm text-destructive">
+              <button 
+                onClick={() => setSelectedTab('monitoring')}
+                className="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 hover:underline transition-all cursor-pointer"
+              >
                 <TriangleAlert className="h-4 w-4" />
                 Intervenção recomendada
-              </span>
+              </button>
             )}
           </div>
         </div>
