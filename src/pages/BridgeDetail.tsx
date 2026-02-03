@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useBridge } from '@/hooks/useBridges';
 import { useDevices } from '@/hooks/useDevices';
+import { useTelemetry } from '@/hooks/useTelemetry';
 import { useAuth } from '@/contexts/AuthContext';
 import { structuralStatusLabels, type StructuralStatus } from '@/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -24,6 +25,7 @@ import { useInterventions, type NewIntervention } from '@/hooks/useInterventions
 import { CreateInterventionDialog } from '@/components/interventions/CreateInterventionDialog';
 import { exportInterventions, exportSensorData, exportEvents, generateBridgeReport, exportToJSON } from '@/lib/exportUtils';
 import { toast } from 'sonner';
+import { getSensorStatus } from '@/lib/utils/sensorStatus';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,6 +53,7 @@ export default function BridgeDetail() {
   // Use API to fetch bridge data
   const { bridge, isLoading: isLoadingBridge } = useBridge(id);
   const { devices: sensors, isLoading: isLoadingSensors } = useDevices(undefined, id);
+  const { latestData: telemetryData, isLoading: isLoadingTelemetry } = useTelemetry(id);
   
   // Placeholder data for features not yet connected to API
   const events: BridgeEvent[] = [];
@@ -58,7 +61,7 @@ export default function BridgeDetail() {
   const schedules: any[] = [];
   const documents: any[] = [];
   const bridgeProblems: any[] = [];
-  const bridgeInterventions = useMemo(() => getInterventionsByBridge(id || ''), [id, interventions]);
+  const bridgeInterventions = useMemo(() => getInterventionsByBridge(id || ''), [id, interventions, getInterventionsByBridge]);
 
   const canEdit = hasRole(['admin', 'gestor']);
 
@@ -186,32 +189,50 @@ export default function BridgeDetail() {
     { id: 4, name: 'Câmera 4', location: 'Vão 4 - Vista lateral', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800' },
   ];
 
-  // Generate more sensor data for the cards
-  const sensorCards = Array.from({ length: 5 }, (_, i) => ({
-    id: `S${i + 1}`,
-    name: `Sensor S${i + 1}`,
-    location: `Longarina ${i + 1 <= 3 ? 'N' : 'S'}`,
-    frequency: `Frequência ${i + 1}`,
-    status: i === 2 ? 'alert' : 'normal',
-    freqK: (3.20 + Math.random() * 0.5).toFixed(2),
-    freqP: (3.40 + Math.random() * 0.5).toFixed(2),
-    accK: (0.10 + Math.random() * 0.05).toFixed(2),
-    accP: (0.15 + Math.random() * 0.05).toFixed(2),
-  }));
+  // Build 3D sensor data from real telemetry
+  const bridge3DSensors: Bridge3DSensor[] = useMemo(() => {
+    if (!telemetryData || telemetryData.length === 0) {
+      // Fallback mock data if no telemetry
+      return Array.from({ length: 5 }, (_, i) => ({
+        id: `S${i + 1}`,
+        name: `Sensor S${i + 1}`,
+        position: `Longarina ${i + 1 <= 3 ? 'N' : 'S'}`,
+        type: i < 4 ? 'Frequência' as const : 'Aceleração' as const,
+        deviceType: i < 4 ? 'frequencia' as const : 'aceleracao' as const,
+        status: 'normal' as const,
+        frequency1: 3.5,
+        acceleration: 9.8,
+        timestamp: new Date().toISOString(),
+      }));
+    }
 
-  // Bridge 3D sensors data
-  const bridge3DSensors: Bridge3DSensor[] = sensorCards.map((s, i) => ({
-    id: s.id,
-    name: s.name,
-    position: s.location,
-    type: i < 4 ? 'Frequência' : 'Aceleração',
-    deviceType: i < 4 ? 'frequencia' : 'aceleracao',
-    status: s.status === 'alert' ? 'alert' : 'normal',
-    frequency1: parseFloat(s.freqK),
-    frequency2: parseFloat(s.freqP),
-    acceleration: parseFloat(s.accK),
-    timestamp: new Date().toISOString(),
-  }));
+    return telemetryData.map((telemetry, idx) => {
+      const isFrequency = telemetry.modoOperacao === 'frequencia';
+      const value = isFrequency ? telemetry.frequency : telemetry.acceleration?.z;
+      const sensorType = isFrequency ? 'frequency' : 'acceleration';
+      const statusResult = getSensorStatus(value, sensorType);
+      
+      // Map status to Bridge3DSensor expected format
+      const statusMap: Record<string, Bridge3DSensor['status']> = {
+        normal: 'normal',
+        attention: 'warning',
+        alert: 'critical',
+      };
+
+      return {
+        id: telemetry.deviceId || `S${idx + 1}`,
+        name: telemetry.deviceId || `Sensor S${idx + 1}`,
+        position: `Posição ${idx + 1}`,
+        type: isFrequency ? 'Frequência' as const : 'Aceleração' as const,
+        deviceType: isFrequency ? 'frequencia' as const : 'aceleracao' as const,
+        status: statusMap[statusResult] || 'normal',
+        frequency1: telemetry.frequency,
+        acceleration: telemetry.acceleration?.z,
+        timestamp: telemetry.timestamp,
+      };
+    });
+  }, [telemetryData]);
+
   return (
     <div className="flex-1 overflow-auto">
       {/* Header */}
@@ -491,61 +512,63 @@ export default function BridgeDetail() {
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
-                  {sensorCards.map((sensor) => (
-                    <Card key={sensor.id} className={cn(
-                      "border-2",
-                      sensor.status === 'alert' ? 'border-destructive' : 'border-border'
-                    )}>
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <p className="text-xs text-muted-foreground">Localização</p>
-                            <p className="font-medium text-sm">{sensor.location}</p>
+                  {bridge3DSensors.map((sensor) => {
+                    const isAlert = sensor.status === 'alert' || sensor.status === 'critical';
+                    const isFrequency = sensor.deviceType === 'frequencia';
+                    const value = isFrequency ? sensor.frequency1 : sensor.acceleration;
+                    
+                    return (
+                      <Card key={sensor.id} className={cn(
+                        "border-2",
+                        isAlert ? 'border-destructive' : 'border-border'
+                      )}>
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Localização</p>
+                              <p className="font-medium text-sm">{sensor.position}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-muted-foreground">{sensor.type}</p>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-xs text-muted-foreground">{sensor.frequency}</p>
+                          <div className="space-y-2 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Status</span>
+                              <span className={isAlert ? 'text-destructive' : ''}>
+                                {isAlert ? 'Anomalia' : 'Normal'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">{isFrequency ? 'Frequência' : 'Aceleração'}</span>
+                              <span>
+                                {value !== undefined ? `${value.toFixed(2)} ${isFrequency ? 'Hz' : 'm/s²'}` : '-'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Último Dado</span>
+                              <span>
+                                {sensor.timestamp ? formatDateValue(sensor.timestamp, 'dd/MM HH:mm') : '-'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Device</span>
+                              <span className="truncate max-w-[100px]" title={sensor.id}>{sensor.id}</span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="space-y-2 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Status</span>
-                            <span className={sensor.status === 'alert' ? 'text-destructive' : ''}>
-                              {sensor.status === 'alert' ? 'Anomalia' : 'Normal'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Freq. K</span>
-                            <span>{sensor.freqK} Hz</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Freq. P</span>
-                            <span>{sensor.freqP} Hz</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Acc K</span>
-                            <span>{sensor.accK} m/s²</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Acc P</span>
-                            <span>{sensor.accP} m/s²</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Aquisição</span>
-                            <span>10 Hz/1k</span>
-                          </div>
-                        </div>
-                        {sensor.status === 'alert' && (
-                          <div className="mt-3 flex items-center gap-1 text-destructive text-xs">
-                            <AlertTriangle className="h-3 w-3" />
-                            Tempo no trajeto elevado
-                          </div>
-                        )}
-                        <Button variant="outline" size="sm" className="w-full mt-3 text-xs">
-                          + Alarme
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))}
+                          {isAlert && (
+                            <div className="mt-3 flex items-center gap-1 text-destructive text-xs">
+                              <AlertTriangle className="h-3 w-3" />
+                              Valor acima do limite
+                            </div>
+                          )}
+                          <Button variant="outline" size="sm" className="w-full mt-3 text-xs">
+                            + Alarme
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
