@@ -3,6 +3,8 @@ import type { User, UserRole } from '@/types';
 import { authService } from '@/lib/api';
 import { getUserByEmail } from '@/data/mockData';
 
+// Force module refresh
+
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
