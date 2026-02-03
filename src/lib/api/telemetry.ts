@@ -28,14 +28,10 @@ export async function getLatestByBridge(bridgeId: string): Promise<TelemetryData
 export async function getHistoryByBridge(
   bridgeId: string,
   params?: TelemetryHistoryParams
-): Promise<TimeSeriesPoint[]> {
+): Promise<TelemetryData[]> {
   const response = await api.get<TelemetryData[]>(`/telemetry/history/bridge/${bridgeId}`, { params });
-  
-  // Transforma dados de telemetria em pontos de série temporal
-  return response.data.map((item) => ({
-    timestamp: item.timestamp,
-    value: item.frequency || 0,
-  }));
+  // Retorna dados completos de telemetria (valores do eixo Z conforme API)
+  return response.data;
 }
 
 export const telemetryService = {

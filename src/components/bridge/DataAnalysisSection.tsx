@@ -8,13 +8,15 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, ReferenceLine, Scatter, ComposedChart } from 'recharts';
-import { Filter, Download, AlertTriangle, TrendingUp, TrendingDown, Maximize2, Calendar, Table, CheckCircle, FileDown } from 'lucide-react';
+import { Filter, Download, AlertTriangle, TrendingUp, TrendingDown, Maximize2, Calendar, Table, CheckCircle, FileDown, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { exportChartData, exportToJSON } from '@/lib/exportUtils';
 import { toast } from 'sonner';
-import { mockBridges } from '@/data/mockData';
 import { CreateInterventionDialog } from '@/components/interventions/CreateInterventionDialog';
 import { useInterventions, type NewIntervention } from '@/hooks/useInterventions';
+import { useTelemetry } from '@/hooks/useTelemetry';
+import { useBridge } from '@/hooks/useBridges';
+import { formatValue } from '@/lib/utils/formatValue';
 
 interface DataAnalysisSectionProps {
   bridgeId: string;
@@ -62,7 +64,8 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
   const [showScheduleConfirm, setShowScheduleConfirm] = useState(false);
   
   const { addIntervention } = useInterventions();
-  const bridge = mockBridges.find(b => b.id === bridgeId);
+  const { bridge } = useBridge(bridgeId);
+  const { historyData, latestData, isLoading: isTelemetryLoading } = useTelemetry(bridgeId);
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
 
   // Mock anomaly event
@@ -79,19 +82,39 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
     description: 'Sensor accel1-Z registrou valores 8821% acima da média por aproximadamente 31 minutos. Aceleração RMS elevada no eixo Z: 10.706 m/s² (limite: 10.5 m/s²)',
   };
 
-  // Mock KPI data (Acceleration: 9.5-11 m/s², Frequency: 3.20-4.20 Hz)
-  const kpiData = {
-    frequencyAvg: 3.68,
-    frequencyMin: 3.22,
-    accelerationAvg: 9.85,
-    accelerationMin: 9.52,
-    accelerationMax: 10.45,
-    accelerationPeak: 10.92,
-    frequencyMax: 4.15,
-    frequencyPeak: 4.18,
-    vibrationLevel: 21.8,
-    structuralStatus: 'Crítico',
-  };
+  // Compute KPI data from real telemetry or fallback to defaults
+  const kpiData = useMemo(() => {
+    if (latestData.length > 0) {
+      const frequencies = latestData.filter(d => d.frequency).map(d => d.frequency!);
+      const accelerations = latestData.filter(d => d.acceleration?.z).map(d => d.acceleration!.z);
+      
+      return {
+        frequencyAvg: frequencies.length > 0 ? (frequencies.reduce((a, b) => a + b, 0) / frequencies.length).toFixed(2) : '-',
+        frequencyMin: frequencies.length > 0 ? Math.min(...frequencies).toFixed(2) : '-',
+        frequencyMax: frequencies.length > 0 ? Math.max(...frequencies).toFixed(2) : '-',
+        frequencyPeak: frequencies.length > 0 ? Math.max(...frequencies).toFixed(2) : '-',
+        accelerationAvg: accelerations.length > 0 ? (accelerations.reduce((a, b) => a + b, 0) / accelerations.length).toFixed(2) : '-',
+        accelerationMin: accelerations.length > 0 ? Math.min(...accelerations).toFixed(2) : '-',
+        accelerationMax: accelerations.length > 0 ? Math.max(...accelerations).toFixed(2) : '-',
+        accelerationPeak: accelerations.length > 0 ? Math.max(...accelerations).toFixed(2) : '-',
+        vibrationLevel: '-',
+        structuralStatus: bridge?.structuralStatus || '-',
+      };
+    }
+    // Fallback mock data
+    return {
+      frequencyAvg: '3.68',
+      frequencyMin: '3.22',
+      accelerationAvg: '9.85',
+      accelerationMin: '9.52',
+      accelerationMax: '10.45',
+      accelerationPeak: '10.92',
+      frequencyMax: '4.15',
+      frequencyPeak: '4.18',
+      vibrationLevel: '21.8',
+      structuralStatus: 'Crítico',
+    };
+  }, [latestData, bridge]);
 
   // Mock time series data with X, Y, Z axes for acceleration (9.5-11 m/s²)
   const timeSeriesAcceleration = useMemo(() => {

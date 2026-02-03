@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Badge } from '@/components/ui/badge';
@@ -35,8 +35,6 @@ export default function BridgesMapLeaflet({ compact = false, bridges = [], onBri
   const kmzLayerRef = useRef<L.LayerGroup | null>(null);
   const bridgeMarkersRef = useRef<L.LayerGroup | null>(null);
   
-  const [kmzLoaded, setKmzLoaded] = useState(false);
-  const [kmzCount, setKmzCount] = useState(0);
 
   const defaultCenter: [number, number] = [-15.7801, -47.9292];
 
@@ -113,16 +111,12 @@ export default function BridgesMapLeaflet({ compact = false, bridges = [], onBri
     };
 
     const overlayMaps = {
-      'Pontos KMZ': kmzLayerRef.current,
       'Pontes': bridgeMarkersRef.current,
     };
 
     L.control.layers(baseMaps, overlayMaps, { position: 'topright' }).addTo(map);
 
     mapInstanceRef.current = map;
-
-    // Load global KMZ file
-    loadKmzFile(map);
 
     return () => {
       map.remove();
@@ -133,13 +127,15 @@ export default function BridgesMapLeaflet({ compact = false, bridges = [], onBri
   // Update bridge markers when bridges change
   useEffect(() => {
     const bridgeGroup = bridgeMarkersRef.current;
+    const kmzGroup = kmzLayerRef.current;
     const map = mapInstanceRef.current;
-    if (!bridgeGroup || !map) return;
+    if (!bridgeGroup || !kmzGroup || !map) return;
 
     // Clear existing markers
     bridgeGroup.clearLayers();
+    kmzGroup.clearLayers();
 
-    // Add bridge markers
+    // Add bridge markers (only bridges with coordinates)
     const bridgesWithCoords = bridges.filter(b => b.coordinates?.lat && b.coordinates?.lng);
     
     bridgesWithCoords.forEach(bridge => {
@@ -155,17 +151,19 @@ export default function BridgesMapLeaflet({ compact = false, bridges = [], onBri
           }
         });
 
-        // Popup with bridge info
+        // Popup with bridge info - using "-" for empty values
+        const formatPopupValue = (value: any) => value || '-';
+        
         marker.bindPopup(`
           <div style="min-width: 200px;">
             <strong style="font-size: 14px;">${bridge.name}</strong>
             <hr style="margin: 8px 0; border-color: #eee;">
             <div style="font-size: 12px; line-height: 1.5;">
-              <p><b>Tipologia:</b> ${bridge.typology}</p>
-              <p><b>Rodovia:</b> ${bridge.rodovia || 'N/A'}</p>
-              <p><b>KM:</b> ${bridge.km || 'N/A'}</p>
-              <p><b>Sensores:</b> ${bridge.sensorCount}</p>
-              <p><b>Status:</b> ${bridge.structuralStatus}</p>
+              <p><b>Tipologia:</b> ${formatPopupValue(bridge.typology)}</p>
+              <p><b>Rodovia:</b> ${formatPopupValue(bridge.rodovia)}</p>
+              <p><b>KM:</b> ${formatPopupValue(bridge.km)}</p>
+              <p><b>Sensores:</b> ${bridge.sensorCount || '-'}</p>
+              <p><b>Status:</b> ${formatPopupValue(bridge.structuralStatus)}</p>
             </div>
             <a href="/bridge/${bridge.id}" style="
               display: block;
@@ -185,11 +183,18 @@ export default function BridgesMapLeaflet({ compact = false, bridges = [], onBri
       }
     });
 
+    // Load individual KMZ files for bridges that have them
+    bridges.forEach(bridge => {
+      if (bridge.kmzFile) {
+        loadBridgeKmz(bridge, map, kmzGroup);
+      }
+    });
+
     // Fit bounds to include bridges if any have coordinates
     if (bridgesWithCoords.length > 0) {
       const allLayers = [...bridgeGroup.getLayers()];
-      if (kmzLayerRef.current) {
-        allLayers.push(...kmzLayerRef.current.getLayers());
+      if (kmzGroup.getLayers().length > 0) {
+        allLayers.push(...kmzGroup.getLayers());
       }
       if (allLayers.length > 0) {
         const featureGroup = L.featureGroup(allLayers);
@@ -201,16 +206,15 @@ export default function BridgesMapLeaflet({ compact = false, bridges = [], onBri
     }
   }, [bridges, onBridgeClick]);
 
-  // Load KMZ file using JSZip and manual parsing
-  const loadKmzFile = async (map: L.Map) => {
+  // Load per-bridge KMZ file if available
+  const loadBridgeKmz = async (bridge: Bridge, map: L.Map, kmzGroup: L.LayerGroup) => {
+    if (!bridge.kmzFile) return;
+    
     try {
       const JSZip = (await import('jszip')).default;
       
-      const response = await fetch('/data/Novas_OAES.kmz');
-      if (!response.ok) {
-        console.warn('KMZ file not found');
-        return;
-      }
+      const response = await fetch(bridge.kmzFile);
+      if (!response.ok) return;
       
       const arrayBuffer = await response.arrayBuffer();
       const zip = await JSZip.loadAsync(arrayBuffer);
@@ -224,27 +228,18 @@ export default function BridgesMapLeaflet({ compact = false, bridges = [], onBri
         }
       }
       
-      if (!kmlContent) {
-        console.warn('No KML file found inside KMZ');
-        return;
-      }
+      if (!kmlContent) return;
       
-      // Parse KML
+      // Parse KML and add markers
       const parser = new DOMParser();
       const kmlDoc = parser.parseFromString(kmlContent, 'text/xml');
-      
-      // Extract placemarks
       const placemarks = kmlDoc.getElementsByTagName('Placemark');
-      const kmzGroup = kmzLayerRef.current;
-      
-      if (!kmzGroup) return;
       
       for (let i = 0; i < placemarks.length; i++) {
         const placemark = placemarks[i];
         const nameEl = placemark.getElementsByTagName('name')[0];
-        const name = nameEl?.textContent || `Ponto ${i + 1}`;
+        const name = nameEl?.textContent || `${bridge.name} - Ponto ${i + 1}`;
         
-        // Try to get coordinates from Point
         const pointEl = placemark.getElementsByTagName('Point')[0];
         if (pointEl) {
           const coordsEl = pointEl.getElementsByTagName('coordinates')[0];
@@ -255,99 +250,25 @@ export default function BridgesMapLeaflet({ compact = false, bridges = [], onBri
             
             if (!isNaN(lat) && !isNaN(lng)) {
               const marker = L.marker([lat, lng], {
-                icon: L.divIcon({
-                  className: 'kmz-marker',
-                  html: `
-                    <div style="
-                      width: 24px;
-                      height: 24px;
-                      background: #3b82f6;
-                      border-radius: 50%;
-                      border: 2px solid white;
-                      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-                    "></div>
-                  `,
-                  iconSize: [24, 24],
-                  iconAnchor: [12, 12],
-                }),
+                icon: createBridgeIcon(bridge.structuralStatus),
               });
               
-              marker.bindPopup(`<strong>${name}</strong><br/><small>Ponto do KMZ</small>`);
+              marker.on('click', () => {
+                if (onBridgeClick) {
+                  onBridgeClick(bridge.id);
+                }
+              });
+              
+              marker.bindPopup(`<strong>${name}</strong><br/><small>${bridge.name}</small>`);
               kmzGroup.addLayer(marker);
             }
           }
         }
-        
-        // Try to get coordinates from LineString
-        const lineEl = placemark.getElementsByTagName('LineString')[0];
-        if (lineEl) {
-          const coordsEl = lineEl.getElementsByTagName('coordinates')[0];
-          if (coordsEl && coordsEl.textContent) {
-            const coordPairs = coordsEl.textContent.trim().split(/\s+/);
-            const latLngs: L.LatLng[] = [];
-            
-            for (const pair of coordPairs) {
-              const [lng, lat] = pair.split(',').map(parseFloat);
-              if (!isNaN(lat) && !isNaN(lng)) {
-                latLngs.push(L.latLng(lat, lng));
-              }
-            }
-            
-            if (latLngs.length > 0) {
-              const polyline = L.polyline(latLngs, {
-                color: '#3b82f6',
-                weight: 3,
-              });
-              polyline.bindPopup(`<strong>${name}</strong>`);
-              kmzGroup.addLayer(polyline);
-            }
-          }
-        }
-        
-        // Try to get coordinates from Polygon
-        const polygonEl = placemark.getElementsByTagName('Polygon')[0];
-        if (polygonEl) {
-          const coordsEl = polygonEl.getElementsByTagName('coordinates')[0];
-          if (coordsEl && coordsEl.textContent) {
-            const coordPairs = coordsEl.textContent.trim().split(/\s+/);
-            const latLngs: L.LatLng[] = [];
-            
-            for (const pair of coordPairs) {
-              const [lng, lat] = pair.split(',').map(parseFloat);
-              if (!isNaN(lat) && !isNaN(lng)) {
-                latLngs.push(L.latLng(lat, lng));
-              }
-            }
-            
-            if (latLngs.length > 0) {
-              const polygon = L.polygon(latLngs, {
-                color: '#3b82f6',
-                fillColor: '#3b82f6',
-                fillOpacity: 0.3,
-              });
-              polygon.bindPopup(`<strong>${name}</strong>`);
-              kmzGroup.addLayer(polygon);
-            }
-          }
-        }
       }
       
-      setKmzLoaded(true);
-      setKmzCount(placemarks.length);
-      
-      // Fit bounds to KMZ data if no bridges
-      if (bridges.length === 0 && kmzGroup && kmzGroup.getLayers().length > 0) {
-        const featureGroup = L.featureGroup(kmzGroup.getLayers());
-        const bounds = featureGroup.getBounds();
-        if (bounds.isValid()) {
-          map.fitBounds(bounds, { padding: [30, 30] });
-        }
-      }
-      
-      console.log(`[KMZ] Loaded ${placemarks.length} placemarks`);
-      
+      console.log(`[KMZ] Loaded KMZ for bridge ${bridge.name}`);
     } catch (error) {
-      console.error('[KMZ] Failed to load:', error);
+      console.error(`[KMZ] Failed to load KMZ for bridge ${bridge.name}:`, error);
     }
   };
 
@@ -362,12 +283,12 @@ export default function BridgesMapLeaflet({ compact = false, bridges = [], onBri
           <h3 className="font-semibold text-foreground text-sm">Localização dos Ativos</h3>
           {bridgesWithCoords > 0 && (
             <Badge variant="default" className="text-xs">
-              {bridgesWithCoords} pontes
+              {bridgesWithCoords} {bridgesWithCoords === 1 ? 'ponte' : 'pontes'}
             </Badge>
           )}
-          {kmzLoaded && (
+          {bridgesWithCoords === 0 && (
             <Badge variant="secondary" className="text-xs">
-              {kmzCount} pontos KMZ
+              Nenhuma ponte com coordenadas
             </Badge>
           )}
         </div>
