@@ -39,7 +39,11 @@ api.interceptors.response.use(
       message: error.message,
     });
     
-    if (error.response?.status === 401) {
+    // Evitar loop: não redirecionar se já está na página de login ou é requisição de auth
+    const isAuthRequest = error.config?.url?.includes('/auth/');
+    const isLoginPage = window.location.pathname === '/login';
+    
+    if (error.response?.status === 401 && !isAuthRequest && !isLoginPage) {
       localStorage.removeItem('d2win_token');
       sessionStorage.removeItem('d2win_token');
       localStorage.removeItem('d2win_user');
