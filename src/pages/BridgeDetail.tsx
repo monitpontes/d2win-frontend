@@ -42,6 +42,7 @@ export default function BridgeDetail() {
   const [isCreateInterventionOpen, setIsCreateInterventionOpen] = useState(false);
   const [editingIntervention, setEditingIntervention] = useState<(NewIntervention & { id: string }) | null>(null);
   const [deleteInterventionId, setDeleteInterventionId] = useState<string | null>(null);
+  const [selectedFolder, setSelectedFolder] = useState<{name: string; type: string; files: Array<{name: string; size: string; date: string; type: string}>} | null>(null);
 
   const { interventions, addIntervention, updateIntervention, deleteIntervention, getInterventionsByBridge } = useInterventions();
 
@@ -970,6 +971,46 @@ export default function BridgeDetail() {
                     const Icon = iconMap[doc.type] || FileText;
                     const actionLabel = doc.type === 'cde' ? 'Acessar' : doc.type === 'api' ? (doc.status === 'connected' ? 'Conectado' : 'Conectar') : doc.type === 'bim' ? 'Em Breve' : 'Ver Pasta';
                     
+                    // Mock files for each folder type
+                    const getMockFiles = (docType: string, docName: string) => {
+                      const filesByType: Record<string, Array<{name: string; size: string; date: string; type: string}>> = {
+                        project: [
+                          { name: 'Projeto_Estrutural_v3.pdf', size: '15.2 MB', date: '15/03/2021', type: 'pdf' },
+                          { name: 'Planta_Baixa.dwg', size: '8.7 MB', date: '15/03/2021', type: 'dwg' },
+                          { name: 'Cortes_Transversais.dwg', size: '5.3 MB', date: '12/03/2021', type: 'dwg' },
+                          { name: 'Memorial_Calculos.pdf', size: '3.8 MB', date: '10/03/2021', type: 'pdf' },
+                          { name: 'Detalhes_Armadura.pdf', size: '2.1 MB', date: '08/03/2021', type: 'pdf' },
+                        ],
+                        report: [
+                          { name: 'Relatorio_Inspecao_2025.pdf', size: '12.5 MB', date: '10/01/2025', type: 'pdf' },
+                          { name: 'Relatorio_Inspecao_2024.pdf', size: '11.2 MB', date: '15/06/2024', type: 'pdf' },
+                          { name: 'Relatorio_Inspecao_2023.pdf', size: '10.8 MB', date: '20/07/2023', type: 'pdf' },
+                          { name: 'Relatorio_Inspecao_2022.pdf', size: '9.5 MB', date: '18/08/2022', type: 'pdf' },
+                          { name: 'Relatorio_Inspecao_2021.pdf', size: '8.9 MB', date: '22/09/2021', type: 'pdf' },
+                          { name: 'Relatorio_Inspecao_2020.pdf', size: '7.6 MB', date: '14/10/2020', type: 'pdf' },
+                        ],
+                        video: [
+                          { name: 'Inspecao_Drone_Jan2025.mp4', size: '245 MB', date: '15/01/2025', type: 'mp4' },
+                          { name: 'Inspecao_Drone_Jul2024.mp4', size: '312 MB', date: '20/07/2024', type: 'mp4' },
+                          { name: 'Inspecao_Subaquatica_2024.mp4', size: '189 MB', date: '05/05/2024', type: 'mp4' },
+                          { name: 'Voo_Panoramico_2024.mp4', size: '156 MB', date: '10/03/2024', type: 'mp4' },
+                        ],
+                      };
+                      return filesByType[docType] || [];
+                    };
+                    
+                    const handleFolderClick = () => {
+                      if (['project', 'report', 'video'].includes(doc.type)) {
+                        setSelectedFolder({
+                          name: doc.name,
+                          type: doc.type,
+                          files: getMockFiles(doc.type, doc.name)
+                        });
+                      } else if (doc.type === 'cde' && doc.url) {
+                        window.open(doc.url, '_blank');
+                      }
+                    };
+                    
                     return (
                       <div key={doc.id} className="flex items-center justify-between rounded-lg border p-4 hover:bg-muted/50 transition-colors">
                         <div className="flex items-center gap-3">
@@ -992,6 +1033,7 @@ export default function BridgeDetail() {
                             doc.status === 'pending' && 'opacity-50'
                           )}
                           disabled={doc.status === 'pending'}
+                          onClick={handleFolderClick}
                         >
                           {actionLabel}
                         </Button>
@@ -1001,6 +1043,59 @@ export default function BridgeDetail() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Folder Contents Dialog */}
+            <Dialog open={!!selectedFolder} onOpenChange={() => setSelectedFolder(null)}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <FolderOpen className="h-5 w-5 text-primary" />
+                    {selectedFolder?.name}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {selectedFolder?.files.length} arquivo(s) disponível(is)
+                  </DialogDescription>
+                </DialogHeader>
+                
+                <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                  {selectedFolder?.files.map((file, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "p-2 rounded",
+                          file.type === 'pdf' ? 'bg-destructive/10 text-destructive' :
+                          file.type === 'dwg' ? 'bg-primary/10 text-primary' :
+                          file.type === 'mp4' ? 'bg-purple-500/10 text-purple-600' :
+                          'bg-muted'
+                        )}>
+                          {file.type === 'mp4' ? <Video className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">{file.name}</p>
+                          <p className="text-xs text-muted-foreground">{file.size} • {file.date}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="sm" className="h-8">
+                          <Eye className="h-4 w-4 mr-1" />
+                          Visualizar
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-8">
+                          <Download className="h-4 w-4 mr-1" />
+                          Baixar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setSelectedFolder(null)}>
+                    Fechar
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* Cameras Tab */}
