@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+// Fallback para URL da API caso variável de ambiente não carregue
+const API_URL = import.meta.env.VITE_API_URL || 'https://d2win-api.onrender.com';
+
+console.log('[API] Configured baseURL:', API_URL);
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -21,6 +24,11 @@ api.interceptors.request.use((config) => {
 // Interceptor para log de resposta e tratamento de erros
 api.interceptors.response.use(
   (response) => {
+    // Detectar resposta HTML inesperada
+    if (typeof response.data === 'string' && response.data.toLowerCase().includes('<!doctype')) {
+      console.error('[API] Received HTML instead of JSON - check API_URL configuration');
+      throw new Error('API returned HTML instead of JSON');
+    }
     console.log(`[API Response] ${response.config.method?.toUpperCase()} ${response.config.url}`, response.data);
     return response;
   },
