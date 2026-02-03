@@ -514,7 +514,7 @@ export default function Admin() {
                           return (
                             <TableRow key={device.id}>
                               <TableCell className="font-medium text-primary">{device.name}</TableCell>
-                              <TableCell className="text-primary">{bridge?.name || device.bridgeId.slice(-8)}</TableCell>
+                              <TableCell className="text-primary">{bridge?.name || (device.bridgeId ? String(device.bridgeId).slice(-8) : 'N/A')}</TableCell>
                               <TableCell>{device.type === 'frequency' ? 'Frequência' : 'Aceleração'}</TableCell>
                               <TableCell>{getStatusBadge(device.status)}</TableCell>
                               <TableCell>{new Date(device.lastReading.timestamp).toLocaleString('pt-BR')}</TableCell>
