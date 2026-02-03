@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ArrowLeft, Activity, FileText, Camera, Settings, Calendar, MapPin, AlertTriangle, Wifi, WifiOff, Play, RefreshCw, FileUp, Download, Eye, Wrench, XCircle, CheckCircle, Clock, TriangleAlert, ExternalLink, FolderOpen, History, Video, Link as LinkIcon, Zap, Box } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
 import Bridge3D, { type Bridge3DSensor } from '@/components/bridge/Bridge3D';
+import DataAnalysisSection from '@/components/bridge/DataAnalysisSection';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -443,6 +444,9 @@ export default function BridgeDetail() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Data Analysis Section */}
+            <DataAnalysisSection bridgeId={bridge.id} />
 
             {/* Events Table */}
             <Card>
