@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowLeft, Activity, FileText, Camera, Settings, Calendar, MapPin, AlertTriangle, Wifi, WifiOff, Play, RefreshCw, FileUp, Download, Eye, Wrench, XCircle, CheckCircle, Clock, TriangleAlert, ExternalLink, FolderOpen, History, Video, Link as LinkIcon, Zap, Box } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
+import Bridge3D, { type Bridge3DSensor } from '@/components/bridge/Bridge3D';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -18,6 +19,7 @@ export default function BridgeDetail() {
   const { id } = useParams<{ id: string }>();
   const { hasRole } = useAuth();
   const [selectedTab, setSelectedTab] = useState('monitoring');
+  const [selectedSensor3D, setSelectedSensor3D] = useState<Bridge3DSensor | null>(null);
 
   const bridge = useMemo(() => mockBridges.find((b) => b.id === id), [id]);
   const sensors = useMemo(() => getSensorsByBridge(id || ''), [id]);
@@ -156,6 +158,19 @@ export default function BridgeDetail() {
     accP: (0.15 + Math.random() * 0.05).toFixed(2),
   }));
 
+  // Bridge 3D sensors data
+  const bridge3DSensors: Bridge3DSensor[] = sensorCards.map((s, i) => ({
+    id: s.id,
+    name: s.name,
+    position: s.location,
+    type: i < 4 ? 'Frequência' : 'Aceleração',
+    deviceType: i < 4 ? 'frequencia' : 'aceleracao',
+    status: s.status === 'alert' ? 'alert' : 'normal',
+    frequency1: parseFloat(s.freqK),
+    frequency2: parseFloat(s.freqP),
+    acceleration: parseFloat(s.accK),
+    timestamp: new Date().toISOString(),
+  }));
   return (
     <div className="flex-1 overflow-auto">
       {/* Header */}
@@ -225,56 +240,64 @@ export default function BridgeDetail() {
               </CardHeader>
               <CardContent>
                 <div className="grid gap-6 lg:grid-cols-3">
-                  <div className="lg:col-span-2">
-                    <div className="relative h-64 rounded-lg bg-slate-900 overflow-hidden">
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="relative w-full h-full p-4">
-                          {/* Mock 3D bridge visualization */}
-                          <div className="absolute top-4 left-4 text-xs text-white/70">
-                            <div>N1</div>
-                            <div>-Z</div>
+                  <div className="lg:col-span-2 h-[450px]">
+                    <Bridge3D
+                      sensors={bridge3DSensors}
+                      onSensorClick={(sensor) => setSelectedSensor3D(sensor)}
+                      selectedSensor={selectedSensor3D}
+                      frequencyLimits={{ normalToAlert: 3.7, alertToCritical: 7 }}
+                      accelerationLimits={{ normalToAlert: 2.5, alertToCritical: 5.0 }}
+                    />
+                  </div>
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Dados dos Sensores</h4>
+                    {selectedSensor3D ? (
+                      <div className="space-y-3 p-4 rounded-lg border bg-muted/30">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-lg">{selectedSensor3D.name}</span>
+                          <Badge variant={selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' ? 'destructive' : 'secondary'}>
+                            {selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' ? 'Alerta' : 'Normal'}
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <p className="text-muted-foreground text-xs">Posição</p>
+                            <p className="font-medium">{selectedSensor3D.position}</p>
                           </div>
-                          <div className="absolute top-4 right-4 text-xs text-white/70">
-                            <div>N4</div>
+                          <div>
+                            <p className="text-muted-foreground text-xs">Tipo</p>
+                            <p className="font-medium">{selectedSensor3D.type}</p>
                           </div>
-                          <div className="absolute bottom-8 left-4 text-xs text-white/70">
-                            <div>S6</div>
-                            <div>INFERIOR</div>
-                          </div>
-                          <div className="absolute bottom-8 right-4 text-xs text-white/70">
-                            <div>INT</div>
-                          </div>
-                          {/* Bridge deck */}
-                          <div className="absolute top-1/3 left-1/4 right-1/4 h-8 bg-gradient-to-r from-slate-600 to-slate-500 transform skew-x-6 rounded">
-                            {/* Sensor dots */}
-                            <div className="absolute top-1/2 left-[10%] w-3 h-3 rounded-full bg-green-500 -translate-y-1/2"></div>
-                            <div className="absolute top-1/2 left-[30%] w-3 h-3 rounded-full bg-green-500 -translate-y-1/2"></div>
-                            <div className="absolute top-1/2 left-[50%] w-3 h-3 rounded-full bg-red-500 -translate-y-1/2 animate-pulse"></div>
-                            <div className="absolute top-1/2 left-[70%] w-3 h-3 rounded-full bg-green-500 -translate-y-1/2"></div>
-                            <div className="absolute top-1/2 left-[90%] w-3 h-3 rounded-full bg-green-500 -translate-y-1/2"></div>
-                          </div>
-                          {/* Pillars */}
-                          <div className="absolute bottom-1/4 left-[20%] w-2 h-16 bg-green-700 rounded"></div>
-                          <div className="absolute bottom-1/4 left-[40%] w-2 h-16 bg-green-700 rounded"></div>
-                          <div className="absolute bottom-1/4 left-[60%] w-2 h-16 bg-green-700 rounded"></div>
-                          <div className="absolute bottom-1/4 left-[80%] w-2 h-16 bg-green-700 rounded"></div>
-                          {/* Ground */}
-                          <div className="absolute bottom-4 left-1/4 right-1/4 h-2 bg-green-800/50 rounded"></div>
+                          {selectedSensor3D.deviceType === 'frequencia' && (
+                            <>
+                              <div>
+                                <p className="text-muted-foreground text-xs">Frequência 1</p>
+                                <p className="font-medium">{selectedSensor3D.frequency1?.toFixed(2)} Hz</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground text-xs">Frequência 2</p>
+                                <p className="font-medium">{selectedSensor3D.frequency2?.toFixed(2)} Hz</p>
+                              </div>
+                            </>
+                          )}
+                          {selectedSensor3D.deviceType === 'aceleracao' && (
+                            <div>
+                              <p className="text-muted-foreground text-xs">Aceleração</p>
+                              <p className="font-medium">{selectedSensor3D.acceleration?.toFixed(2)} m/s²</p>
+                            </div>
+                          )}
                         </div>
                       </div>
-                      {/* Controls */}
-                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-slate-800/80 rounded-lg px-3 py-1">
-                        <button className="text-white/70 hover:text-white px-2 py-1 text-xs">Frente</button>
-                        <button className="text-white/70 hover:text-white px-2 py-1 text-xs bg-slate-700 rounded">Ref</button>
-                        <button className="text-white/70 hover:text-white px-2 py-1 text-xs">Cima</button>
-                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Clique em um sensor no modelo 3D para ver os detalhes.
+                      </p>
+                    )}
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p>• Utilize o mouse para girar a visualização</p>
+                      <p>• Scroll para zoom</p>
+                      <p>• Use os botões de navegação para vistas predefinidas</p>
                     </div>
-                  </div>
-                  <div>
-                    <h4 className="font-medium mb-3">Dados dos Sensores</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Clique em um sensor no modelo 3D para ver os detalhes.
-                    </p>
                   </div>
                 </div>
               </CardContent>
