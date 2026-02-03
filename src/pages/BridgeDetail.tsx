@@ -1,15 +1,15 @@
 import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { mockBridges, getSensorsByBridge, getEventsByBridge, getCamerasByBridge, getSchedulesByBridge, getDocumentsByBridge, mockSystemStatus } from '@/data/mockData';
+import { mockBridges, getSensorsByBridge, getEventsByBridge, getCamerasByBridge, getSchedulesByBridge, getDocumentsByBridge, mockSystemStatus, mockStructuralProblems, mockInterventions } from '@/data/mockData';
 import { useAuth } from '@/contexts/AuthContext';
+import { structuralStatusLabels, type StructuralStatus } from '@/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Activity, FileText, Camera, Settings, Calendar, MapPin, AlertTriangle, Wifi, WifiOff, Play, RefreshCw, FileUp, Download } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { ArrowLeft, Activity, FileText, Camera, Settings, Calendar, MapPin, AlertTriangle, Wifi, WifiOff, Play, RefreshCw, FileUp, Download, Eye, Wrench, XCircle, CheckCircle, Clock, TriangleAlert, ExternalLink, FolderOpen, History, Video, Link as LinkIcon, Zap, Box } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -25,6 +25,8 @@ export default function BridgeDetail() {
   const cameras = useMemo(() => getCamerasByBridge(id || ''), [id]);
   const schedules = useMemo(() => getSchedulesByBridge(id || ''), [id]);
   const documents = useMemo(() => getDocumentsByBridge(id || ''), [id]);
+  const bridgeProblems = useMemo(() => mockStructuralProblems.filter(p => p.bridgeId === id), [id]);
+  const bridgeInterventions = useMemo(() => mockInterventions.filter(i => i.bridgeId === id), [id]);
 
   const canEdit = hasRole(['admin', 'gestor']);
 
@@ -39,29 +41,61 @@ export default function BridgeDetail() {
     );
   }
 
-  // Generate mock chart data
-  const chartData = Array.from({ length: 24 }, (_, i) => ({
-    time: `${String(i).padStart(2, '0')}:00`,
-    frequencyX: 2.3 + Math.random() * 0.4,
-    frequencyZ: 2.1 + Math.random() * 0.3,
-    accelerationX: 0.03 + Math.random() * 0.02,
-    accelerationY: 0.02 + Math.random() * 0.015,
-    accelerationZ: 0.04 + Math.random() * 0.025,
-  }));
+  // Generate mock chart data with reference lines
+  const chartData = Array.from({ length: 48 }, (_, i) => {
+    const hour = Math.floor(i / 2);
+    const minute = (i % 2) * 30;
+    return {
+      time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+      frequencyX: 2.3 + Math.random() * 0.4,
+      frequencyZ: 2.1 + Math.random() * 0.3,
+      accelerationX: 0.03 + Math.random() * 0.02,
+      accelerationY: 0.02 + Math.random() * 0.015,
+      accelerationZ: 0.04 + Math.random() * 0.025,
+    };
+  });
+
+  const getStructuralStatusConfig = (status: StructuralStatus) => {
+    const configs: Record<StructuralStatus, { label: string; className: string; badgeClass: string }> = {
+      operacional: { label: structuralStatusLabels.operacional, className: 'text-success', badgeClass: 'bg-success text-success-foreground' },
+      atencao: { label: structuralStatusLabels.atencao, className: 'text-warning', badgeClass: 'bg-warning text-warning-foreground' },
+      restricoes: { label: structuralStatusLabels.restricoes, className: 'text-orange-500', badgeClass: 'bg-orange-500 text-white' },
+      critico: { label: structuralStatusLabels.critico, className: 'text-destructive', badgeClass: 'bg-destructive text-destructive-foreground' },
+      interdicao: { label: structuralStatusLabels.interdicao, className: 'text-destructive', badgeClass: 'bg-destructive text-destructive-foreground' },
+    };
+    return configs[status];
+  };
 
   const getStatusConfig = (status: string) => {
     const configs: Record<string, { label: string; className: string }> = {
-      normal: { label: 'Normal', className: 'bg-success text-success-foreground' },
-      alert: { label: 'Alerta', className: 'bg-warning text-warning-foreground' },
-      critical: { label: 'Crítico', className: 'bg-destructive text-destructive-foreground' },
       online: { label: 'Online', className: 'bg-success text-success-foreground' },
       offline: { label: 'Offline', className: 'bg-muted text-muted-foreground' },
       maintenance: { label: 'Manutenção', className: 'bg-warning text-warning-foreground' },
-      planned: { label: 'Planejada', className: 'bg-info text-info-foreground' },
+      planned: { label: 'Agendada', className: 'bg-muted text-foreground' },
       in_progress: { label: 'Em Andamento', className: 'bg-warning text-warning-foreground' },
       completed: { label: 'Concluída', className: 'bg-success text-success-foreground' },
+      attention: { label: 'Atenção', className: 'bg-destructive text-destructive-foreground' },
     };
     return configs[status] || { label: status, className: 'bg-muted' };
+  };
+
+  const getProblemStatusConfig = (status: string) => {
+    const configs: Record<string, { label: string; className: string }> = {
+      'Em Análise': { label: 'Em Análise', className: 'bg-primary text-primary-foreground' },
+      'Corrigido': { label: 'Corrigido', className: 'bg-success text-success-foreground' },
+      'Agendado': { label: 'Agendado', className: 'bg-orange-500 text-white' },
+      'Pendente': { label: 'Pendente', className: 'bg-muted text-muted-foreground' },
+    };
+    return configs[status] || { label: status, className: 'bg-muted' };
+  };
+
+  const getPriorityConfig = (priority: string) => {
+    const configs: Record<string, { label: string; className: string }> = {
+      'Urgente': { label: 'Urgente', className: 'bg-destructive text-destructive-foreground' },
+      'Média': { label: 'Média', className: 'bg-orange-500 text-white' },
+      'Baixa': { label: 'Baixa', className: 'bg-muted text-muted-foreground' },
+    };
+    return configs[priority] || { label: priority, className: 'bg-muted' };
   };
 
   const getSeverityConfig = (severity: string) => {
@@ -74,40 +108,85 @@ export default function BridgeDetail() {
     return configs[severity] || { label: severity, className: '' };
   };
 
+  const getCriticalityBadge = (criticality: string) => {
+    const configs: Record<string, { label: string; className: string }> = {
+      low: { label: 'LOW', className: 'bg-success text-success-foreground' },
+      medium: { label: 'MEDIUM', className: 'bg-primary text-primary-foreground' },
+      high: { label: 'HIGH', className: 'bg-destructive text-destructive-foreground' },
+    };
+    return configs[criticality] || { label: criticality.toUpperCase(), className: 'bg-muted' };
+  };
+
+  // Mock service statuses
+  const serviceStatuses = [
+    { name: 'Aquisição de Dados', status: 'online', description: 'Operacional' },
+    { name: 'Processamento de Sinais', status: 'online', description: 'Operacional' },
+    { name: 'Sistema de Alertas', status: 'attention', description: 'Degradado' },
+    { name: 'Sincronização Cloud', status: 'online', description: 'Operacional' },
+  ];
+
+  // Mock system events
+  const systemEvents = [
+    { time: '10:23', description: 'Backup automático concluído com sucesso' },
+    { time: '09:15', description: 'Sensor F3 reportou variação de frequência' },
+    { time: '08:47', description: 'Manutenção preventiva agendada para próxima semana' },
+  ];
+
+  const structuralStatusConfig = getStructuralStatusConfig(bridge.structuralStatus);
+  const needsIntervention = ['critico', 'interdicao'].includes(bridge.structuralStatus);
+
+  // Mock cameras data for the bridge
+  const mockBridgeCameras = [
+    { id: 1, name: 'Câmera 1', location: 'Vão 1 - Vista lateral', image: bridge.image },
+    { id: 2, name: 'Câmera 2', location: 'Vão 2 - Vista lateral', image: 'https://images.unsplash.com/photo-1545296664-39db56ad95bd?w=800' },
+    { id: 3, name: 'Câmera 3', location: 'Vão 3 - Vista lateral', image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=800' },
+    { id: 4, name: 'Câmera 4', location: 'Vão 4 - Vista lateral', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800' },
+  ];
+
+  // Generate more sensor data for the cards
+  const sensorCards = Array.from({ length: 5 }, (_, i) => ({
+    id: `S${i + 1}`,
+    name: `Sensor S${i + 1}`,
+    location: `Longarina ${i + 1 <= 3 ? 'N' : 'S'}`,
+    frequency: `Frequência ${i + 1}`,
+    status: i === 2 ? 'alert' : 'normal',
+    freqK: (3.20 + Math.random() * 0.5).toFixed(2),
+    freqP: (3.40 + Math.random() * 0.5).toFixed(2),
+    accK: (0.10 + Math.random() * 0.05).toFixed(2),
+    accP: (0.15 + Math.random() * 0.05).toFixed(2),
+  }));
+
   return (
     <div className="flex-1 overflow-auto">
       {/* Header */}
-      <div className="border-b bg-card p-6">
+      <div className="border-b bg-card p-4 md:p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-4">
-            <Button variant="ghost" size="icon" asChild>
-              <Link to="/dashboard">
-                <ArrowLeft className="h-5 w-5" />
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/dashboard" className="flex items-center gap-1">
+                <ArrowLeft className="h-4 w-4" />
+                Dashboard
               </Link>
             </Button>
             <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold">{bridge.name}</h1>
-                <Badge className={getStatusConfig(bridge.structuralStatus).className}>
-                  {getStatusConfig(bridge.structuralStatus).label}
-                </Badge>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold">OAE km {bridge.km}+{Math.floor(Math.random() * 999)} ({bridge.name} - {bridge.rodovia})</h1>
               </div>
-              <div className="mt-1 flex items-center gap-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <MapPin className="h-4 w-4" />
-                  {bridge.location}
-                </span>
-                <span>Concessão: {bridge.concession}</span>
-                <span>{bridge.sensorCount} sensores</span>
-              </div>
+              <p className="text-sm text-muted-foreground">ID: {bridge.id.replace('bridge-', 'A-P')}</p>
             </div>
           </div>
-          {bridge.hasActiveAlerts && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <span className="text-sm font-medium">Alertas Ativos</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 rounded-lg border-2 border-destructive/50 bg-destructive/5 px-4 py-2">
+            <span className="text-sm text-muted-foreground">Status Estrutural:</span>
+            <Badge className={structuralStatusConfig.badgeClass}>
+              {bridge.structuralStatus === 'critico' ? 'Crítico' : structuralStatusConfig.label}
+            </Badge>
+            {needsIntervention && (
+              <span className="flex items-center gap-1 text-sm text-destructive">
+                <TriangleAlert className="h-4 w-4" />
+                Intervenção recomendada
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -116,23 +195,18 @@ export default function BridgeDetail() {
         <div className="border-b bg-card px-6">
           <TabsList className="h-12 bg-transparent">
             <TabsTrigger value="monitoring" className="data-[state=active]:bg-muted">
-              <Activity className="mr-2 h-4 w-4" />
-              Monitoramento
+              Monitoramento e Dados
             </TabsTrigger>
             <TabsTrigger value="specifications" className="data-[state=active]:bg-muted">
-              <FileText className="mr-2 h-4 w-4" />
               Especificações
             </TabsTrigger>
             <TabsTrigger value="cameras" className="data-[state=active]:bg-muted">
-              <Camera className="mr-2 h-4 w-4" />
               Câmeras
             </TabsTrigger>
             <TabsTrigger value="service" className="data-[state=active]:bg-muted">
-              <Settings className="mr-2 h-4 w-4" />
               Dashboard de Serviço
             </TabsTrigger>
             <TabsTrigger value="schedules" className="data-[state=active]:bg-muted">
-              <Calendar className="mr-2 h-4 w-4" />
               Programações
             </TabsTrigger>
           </TabsList>
@@ -141,63 +215,170 @@ export default function BridgeDetail() {
         <div className="p-6">
           {/* Monitoring Tab */}
           <TabsContent value="monitoring" className="m-0 space-y-6">
-            {/* Digital Twin Section */}
+            {/* 3D Visualization */}
             <Card>
               <CardHeader>
-                <CardTitle>Gêmeo Digital - Visualização 3D</CardTitle>
-                <CardDescription>Visualização interativa dos sensores na estrutura</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <Box className="h-5 w-5" />
+                  Visualização 3D
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="relative h-64 rounded-lg bg-muted">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center">
-                      <Activity className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        Visualização 3D da estrutura
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        (Em desenvolvimento)
-                      </p>
+                <div className="grid gap-6 lg:grid-cols-3">
+                  <div className="lg:col-span-2">
+                    <div className="relative h-64 rounded-lg bg-slate-900 overflow-hidden">
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="relative w-full h-full p-4">
+                          {/* Mock 3D bridge visualization */}
+                          <div className="absolute top-4 left-4 text-xs text-white/70">
+                            <div>N1</div>
+                            <div>-Z</div>
+                          </div>
+                          <div className="absolute top-4 right-4 text-xs text-white/70">
+                            <div>N4</div>
+                          </div>
+                          <div className="absolute bottom-8 left-4 text-xs text-white/70">
+                            <div>S6</div>
+                            <div>INFERIOR</div>
+                          </div>
+                          <div className="absolute bottom-8 right-4 text-xs text-white/70">
+                            <div>INT</div>
+                          </div>
+                          {/* Bridge deck */}
+                          <div className="absolute top-1/3 left-1/4 right-1/4 h-8 bg-gradient-to-r from-slate-600 to-slate-500 transform skew-x-6 rounded">
+                            {/* Sensor dots */}
+                            <div className="absolute top-1/2 left-[10%] w-3 h-3 rounded-full bg-green-500 -translate-y-1/2"></div>
+                            <div className="absolute top-1/2 left-[30%] w-3 h-3 rounded-full bg-green-500 -translate-y-1/2"></div>
+                            <div className="absolute top-1/2 left-[50%] w-3 h-3 rounded-full bg-red-500 -translate-y-1/2 animate-pulse"></div>
+                            <div className="absolute top-1/2 left-[70%] w-3 h-3 rounded-full bg-green-500 -translate-y-1/2"></div>
+                            <div className="absolute top-1/2 left-[90%] w-3 h-3 rounded-full bg-green-500 -translate-y-1/2"></div>
+                          </div>
+                          {/* Pillars */}
+                          <div className="absolute bottom-1/4 left-[20%] w-2 h-16 bg-green-700 rounded"></div>
+                          <div className="absolute bottom-1/4 left-[40%] w-2 h-16 bg-green-700 rounded"></div>
+                          <div className="absolute bottom-1/4 left-[60%] w-2 h-16 bg-green-700 rounded"></div>
+                          <div className="absolute bottom-1/4 left-[80%] w-2 h-16 bg-green-700 rounded"></div>
+                          {/* Ground */}
+                          <div className="absolute bottom-4 left-1/4 right-1/4 h-2 bg-green-800/50 rounded"></div>
+                        </div>
+                      </div>
+                      {/* Controls */}
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-slate-800/80 rounded-lg px-3 py-1">
+                        <button className="text-white/70 hover:text-white px-2 py-1 text-xs">Frente</button>
+                        <button className="text-white/70 hover:text-white px-2 py-1 text-xs bg-slate-700 rounded">Ref</button>
+                        <button className="text-white/70 hover:text-white px-2 py-1 text-xs">Cima</button>
+                      </div>
                     </div>
                   </div>
-                  {/* Sensor Markers */}
-                  {sensors.slice(0, 3).map((sensor, i) => (
-                    <div
-                      key={sensor.id}
-                      className={cn(
-                        'absolute flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-card bg-primary text-xs font-bold text-primary-foreground shadow-lg transition-transform hover:scale-110',
-                        sensor.status === 'offline' && 'bg-muted-foreground'
-                      )}
-                      style={{
-                        left: `${20 + i * 30}%`,
-                        top: `${40 + (i % 2) * 20}%`,
-                      }}
-                      title={`${sensor.name} - ${sensor.status}`}
-                    >
-                      {i + 1}
-                    </div>
+                  <div>
+                    <h4 className="font-medium mb-3">Dados dos Sensores</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Clique em um sensor no modelo 3D para ver os detalhes.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Real-time Sensors */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-primary" />
+                  Sensores e Dados em Tempo Real
+                </CardTitle>
+                <CardDescription>
+                  Sistema de Monitoramento Estrutural (SHM) com 5 sensores instalados na OAE.<br/>
+                  Sensores utilizados: Acelerômetros triaxiais (1 Hz, 10 Hz, 50 Hz) (em todos os sensores exceto o 5) e 1 sensor de deformação (FBG) com frequência de 1 e 50 Hz. Não são utilizadas estações metereológicas nesta análise.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+                  {sensorCards.map((sensor) => (
+                    <Card key={sensor.id} className={cn(
+                      "border-2",
+                      sensor.status === 'alert' ? 'border-destructive' : 'border-border'
+                    )}>
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Localização</p>
+                            <p className="font-medium text-sm">{sensor.location}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-muted-foreground">{sensor.frequency}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Status</span>
+                            <span className={sensor.status === 'alert' ? 'text-destructive' : ''}>
+                              {sensor.status === 'alert' ? 'Anomalia' : 'Normal'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Freq. K</span>
+                            <span>{sensor.freqK} Hz</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Freq. P</span>
+                            <span>{sensor.freqP} Hz</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Acc K</span>
+                            <span>{sensor.accK} m/s²</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Acc P</span>
+                            <span>{sensor.accP} m/s²</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Aquisição</span>
+                            <span>10 Hz/1k</span>
+                          </div>
+                        </div>
+                        {sensor.status === 'alert' && (
+                          <div className="mt-3 flex items-center gap-1 text-destructive text-xs">
+                            <AlertTriangle className="h-3 w-3" />
+                            Tempo no trajeto elevado
+                          </div>
+                        )}
+                        <Button variant="outline" size="sm" className="w-full mt-3 text-xs">
+                          + Alarme
+                        </Button>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
               </CardContent>
             </Card>
 
             {/* Charts */}
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Frequência - Últimas 24h</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Frequência - Últimas 24 Horas</CardTitle>
+                      <CardDescription>Monitoramento contínuo dos eixos X e Z dos sensores de frequência</CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Eixos: X, Z</span>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                        <XAxis dataKey="time" className="text-xs" />
-                        <YAxis className="text-xs" />
+                        <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10 }} />
+                        <YAxis className="text-xs" domain={[1.5, 3.5]} tick={{ fontSize: 10 }} />
                         <Tooltip />
                         <Legend />
-                        <Line type="monotone" dataKey="frequencyX" stroke="hsl(var(--chart-1))" name="Eixo X" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="frequencyZ" stroke="hsl(var(--chart-2))" name="Eixo Z" strokeWidth={2} dot={false} />
+                        <ReferenceLine y={3.0} stroke="hsl(var(--destructive))" strokeDasharray="5 5" label={{ value: 'Limite', position: 'right', fontSize: 10 }} />
+                        <Line type="monotone" dataKey="frequencyX" stroke="hsl(220, 70%, 50%)" name="Eixo X" strokeWidth={1} dot={false} />
+                        <Line type="monotone" dataKey="frequencyZ" stroke="hsl(280, 70%, 50%)" name="Eixo Z" strokeWidth={1} dot={false} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -206,22 +387,35 @@ export default function BridgeDetail() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Aceleração - Últimas 24h</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Aceleração - Últimas 24 Horas</CardTitle>
+                      <CardDescription>Monitoramento triaxial dos eixos X, Y e Z da aceleração estrutural</CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Eixos: X, Y, Z</span>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                        <XAxis dataKey="time" className="text-xs" />
-                        <YAxis className="text-xs" />
+                        <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10 }} />
+                        <YAxis className="text-xs" domain={[0, 0.1]} tick={{ fontSize: 10 }} />
                         <Tooltip />
                         <Legend />
-                        <Line type="monotone" dataKey="accelerationX" stroke="hsl(var(--chart-1))" name="X" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="accelerationY" stroke="hsl(var(--chart-2))" name="Y" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="accelerationZ" stroke="hsl(var(--chart-3))" name="Z" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="accelerationX" stroke="hsl(0, 70%, 50%)" name="X" strokeWidth={1} dot={false} />
+                        <Line type="monotone" dataKey="accelerationY" stroke="hsl(120, 70%, 40%)" name="Y" strokeWidth={1} dot={false} />
+                        <Line type="monotone" dataKey="accelerationZ" stroke="hsl(40, 90%, 50%)" name="Z" strokeWidth={1} dot={false} />
                       </LineChart>
                     </ResponsiveContainer>
+                  </div>
+                  <div className="flex items-center justify-center gap-4 mt-2 text-xs">
+                    <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500"></span> Eixo X (Lateral)</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-600"></span> Eixo Y (Longitudinal)</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-yellow-500"></span> Eixo Z (Vertical)</span>
                   </div>
                 </CardContent>
               </Card>
@@ -231,6 +425,7 @@ export default function BridgeDetail() {
             <Card>
               <CardHeader>
                 <CardTitle>Eventos e Anomalias</CardTitle>
+                <CardDescription>Detalhes de anomalias detectadas nos dados</CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -239,9 +434,10 @@ export default function BridgeDetail() {
                       <TableHead>Timestamp</TableHead>
                       <TableHead>Sensor</TableHead>
                       <TableHead>Tipo</TableHead>
-                      <TableHead>Descrição</TableHead>
+                      <TableHead>Métrica</TableHead>
+                      <TableHead>Valor</TableHead>
                       <TableHead>Severidade</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>Descrição</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -249,7 +445,6 @@ export default function BridgeDetail() {
                       events.map((event) => {
                         const sensor = sensors.find((s) => s.id === event.sensorId);
                         const severityConfig = getSeverityConfig(event.severity);
-                        const statusConfig = getStatusConfig(event.status);
                         return (
                           <TableRow key={event.id}>
                             <TableCell className="text-sm">
@@ -257,23 +452,20 @@ export default function BridgeDetail() {
                             </TableCell>
                             <TableCell>{sensor?.name || event.sensorId}</TableCell>
                             <TableCell className="capitalize">{event.type}</TableCell>
-                            <TableCell>{event.description}</TableCell>
+                            <TableCell>frequência</TableCell>
+                            <TableCell>11.89 m/s²</TableCell>
                             <TableCell>
-                              <span className={severityConfig.className}>
+                              <Badge variant="outline" className={severityConfig.className}>
                                 {severityConfig.label}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={statusConfig.className}>
-                                {event.status === 'new' ? 'Novo' : event.status === 'acknowledged' ? 'Reconhecido' : 'Resolvido'}
                               </Badge>
                             </TableCell>
+                            <TableCell className="max-w-xs truncate">{event.description}</TableCell>
                           </TableRow>
                         );
                       })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center text-muted-foreground">
                           Nenhum evento registrado
                         </TableCell>
                       </TableRow>
@@ -286,300 +478,537 @@ export default function BridgeDetail() {
 
           {/* Specifications Tab */}
           <TabsContent value="specifications" className="m-0 space-y-6">
+            {/* Photo and Info */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Camera className="h-5 w-5" />
+                  <CardTitle>Fotografia da OAE</CardTitle>
+                </div>
+                <CardDescription>Registro visual atualizado da estrutura</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="aspect-[21/9] overflow-hidden rounded-lg bg-muted">
+                  {bridge.image ? (
+                    <img src={bridge.image} alt={bridge.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center">
+                      <Activity className="h-12 w-12 text-muted-foreground/50" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-between mt-2 text-sm text-muted-foreground">
+                  <span>Última atualização: {format(new Date(bridge.lastUpdate), 'dd/MM/yyyy', { locale: ptBR })}</span>
+                  <span>{bridge.typology} em {bridge.material.toLowerCase()}</span>
+                </div>
+              </CardContent>
+            </Card>
+
             <div className="grid gap-6 lg:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Imagem da Ponte</CardTitle>
+                  <CardTitle>Informações Gerais</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="aspect-video overflow-hidden rounded-lg bg-muted">
-                    {bridge.image ? (
-                      <img src={bridge.image} alt={bridge.name} className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center">
-                        <Activity className="h-12 w-12 text-muted-foreground/50" />
-                      </div>
-                    )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Comprimento</p>
+                      <p className="text-xl font-bold">{bridge.length}m</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Largura</p>
+                      <p className="text-xl font-bold">{bridge.width || 12.5}m</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Número de Apoios</p>
+                      <p className="text-xl font-bold">{bridge.supportCount}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Ano de Construção</p>
+                      <p className="text-xl font-bold">{bridge.constructionYear || 1998}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">Tipologia</p>
+                      <p className="font-semibold">{bridge.typology} em {bridge.material.toLowerCase()}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">Material</p>
+                      <p className="font-semibold">{bridge.material}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">Capacidade</p>
+                      <p className="font-semibold">{bridge.capacity || 450} ton</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">Última Intervenção Maior</p>
+                      <p className="font-semibold">{bridge.lastMajorIntervention ? format(new Date(bridge.lastMajorIntervention), 'dd/MM/yyyy', { locale: ptBR }) : 'N/A'}</p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Informações Técnicas</CardTitle>
+                  <CardTitle>Criticidade e Impacto</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex justify-between border-b pb-2">
-                      <span className="text-muted-foreground">Localização</span>
-                      <span className="font-medium">{bridge.location}</span>
-                    </div>
-                    <div className="flex justify-between border-b pb-2">
-                      <span className="text-muted-foreground">Concessão</span>
-                      <span className="font-medium">{bridge.concession}</span>
-                    </div>
-                    <div className="flex justify-between border-b pb-2">
-                      <span className="text-muted-foreground">Comprimento</span>
-                      <span className="font-medium">{bridge.length}m</span>
-                    </div>
-                    <div className="flex justify-between border-b pb-2">
-                      <span className="text-muted-foreground">Material</span>
-                      <span className="font-medium">{bridge.material}</span>
-                    </div>
-                    <div className="flex justify-between border-b pb-2">
-                      <span className="text-muted-foreground">Tipo de Viga</span>
-                      <span className="font-medium">{bridge.beamType}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tipo de Vão</span>
-                      <span className="font-medium">{bridge.spanType}</span>
-                    </div>
+                <CardContent className="space-y-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">Nível de Criticidade</p>
+                    <Badge className={getCriticalityBadge(bridge.operationalCriticality).className}>
+                      {getCriticalityBadge(bridge.operationalCriticality).label}
+                    </Badge>
                   </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Impacto Operacional</p>
+                    <p className="font-semibold">Alto - {bridge.operationalImpact || 'Via principal de acesso'}</p>
+                  </div>
+                  {needsIntervention && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive">
+                      <TriangleAlert className="h-5 w-5 mt-0.5" />
+                      <div>
+                        <p className="font-semibold">Necessidade de Interdição</p>
+                        <p className="text-sm opacity-80">Baseado na criticidade dos sensores e nível de impacto operacional.</p>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
 
-            {/* Documents */}
+            {/* Geo-referenced Image */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Documentos</CardTitle>
-                  <CardDescription>Projetos, relatórios e arquivos relacionados</CardDescription>
-                </div>
-                {canEdit && (
-                  <Button variant="outline" size="sm">
-                    <FileUp className="mr-2 h-4 w-4" />
-                    Upload
-                  </Button>
-                )}
+              <CardHeader>
+                <CardTitle>Imagem Georreferenciada</CardTitle>
+                <CardDescription>Localização via Google Earth</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  {documents.map((doc) => (
-                    <div key={doc.id} className="flex items-center justify-between rounded-lg border p-3">
-                      <div className="flex items-center gap-3">
-                        <FileText className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <p className="font-medium">{doc.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Enviado em {format(new Date(doc.uploadedAt), 'dd/MM/yyyy', { locale: ptBR })}
-                          </p>
-                        </div>
+                <div className="aspect-[21/9] overflow-hidden rounded-lg bg-muted relative">
+                  <img 
+                    src="https://images.unsplash.com/photo-1569336415962-a4bd9f69cd83?w=1200" 
+                    alt="Mapa georreferenciado" 
+                    className="h-full w-full object-cover" 
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center text-white bg-black/50 p-4 rounded-lg">
+                      <p className="font-mono text-lg">SP-348_042+563_S_(PI)</p>
+                      <div className="w-8 h-8 mx-auto my-2">
+                        <MapPin className="w-full h-full text-yellow-400" />
                       </div>
-                      <Button variant="ghost" size="sm">
-                        <Download className="h-4 w-4" />
-                      </Button>
+                      <p className="font-mono text-lg">SP-348_042+563_N_(PI)</p>
                     </div>
-                  ))}
-                  {documents.length === 0 && (
-                    <p className="text-center text-muted-foreground py-4">
-                      Nenhum documento disponível
-                    </p>
-                  )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Technical Integrations */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  <div>
+                    <CardTitle>Integrações Técnicas</CardTitle>
+                    <CardDescription>Acesso centralizado aos documentos técnicos da OAE e integrações com sistemas corporativos.</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {documents.map((doc) => {
+                    const iconMap: Record<string, any> = {
+                      project: FileText,
+                      report: FileText,
+                      video: Video,
+                      bim: Box,
+                      cde: LinkIcon,
+                      api: Zap,
+                    };
+                    const Icon = iconMap[doc.type] || FileText;
+                    const actionLabel = doc.type === 'cde' ? 'Acessar' : doc.type === 'api' ? (doc.status === 'connected' ? 'Conectado' : 'Conectar') : doc.type === 'bim' ? 'Em Breve' : 'Ver Pasta';
+                    
+                    return (
+                      <div key={doc.id} className="flex items-center justify-between rounded-lg border p-4 hover:bg-muted/50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "p-2 rounded",
+                            doc.type === 'api' && doc.status === 'connected' ? 'bg-destructive/10 text-destructive' : 'bg-muted'
+                          )}>
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{doc.name}</p>
+                            <p className="text-xs text-muted-foreground">{doc.description}</p>
+                          </div>
+                        </div>
+                        <Button 
+                          variant={doc.status === 'connected' ? 'outline' : 'outline'} 
+                          size="sm"
+                          className={cn(
+                            doc.status === 'connected' && 'border-success text-success hover:bg-success/10',
+                            doc.status === 'pending' && 'opacity-50'
+                          )}
+                          disabled={doc.status === 'pending'}
+                        >
+                          {actionLabel}
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
           {/* Cameras Tab */}
-          <TabsContent value="cameras" className="m-0">
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {cameras.map((camera) => (
-                <Card key={camera.id}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">{camera.name}</CardTitle>
-                      <Badge variant="outline" className={camera.status === 'online' ? 'border-success text-success' : 'border-muted text-muted-foreground'}>
-                        {camera.status === 'online' ? <Wifi className="mr-1 h-3 w-3" /> : <WifiOff className="mr-1 h-3 w-3" />}
-                        {camera.status === 'online' ? 'Online' : 'Offline'}
-                      </Badge>
+          <TabsContent value="cameras" className="m-0 space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Camera className="h-5 w-5" />
+                  <div>
+                    <CardTitle>Sistema de Câmeras</CardTitle>
+                    <CardDescription>Monitoramento visual em tempo real da estrutura</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {mockBridgeCameras.map((camera) => (
+                    <div key={camera.id} className="relative aspect-video overflow-hidden rounded-lg bg-muted group">
+                      <img 
+                        src={camera.image} 
+                        alt={camera.name} 
+                        className="h-full w-full object-cover transition-transform group-hover:scale-105" 
+                      />
+                      <div className="absolute top-3 left-3">
+                        <Badge className="bg-destructive text-destructive-foreground flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                          AO VIVO
+                        </Badge>
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
+                        <p className="font-medium text-white">{camera.name}</p>
+                        <p className="text-sm text-white/70">{camera.location}</p>
+                      </div>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="relative aspect-video overflow-hidden rounded-lg bg-muted">
-                      {camera.thumbnail ? (
-                        <img src={camera.thumbnail} alt={camera.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full items-center justify-center">
-                          <Camera className="h-12 w-12 text-muted-foreground/50" />
-                        </div>
-                      )}
-                      {camera.status === 'online' && (
-                        <Button size="sm" className="absolute bottom-2 right-2" variant="secondary">
-                          <Play className="mr-1 h-3 w-3" />
-                          Ao Vivo
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-              {cameras.length === 0 && (
-                <Card className="col-span-full">
-                  <CardContent className="flex flex-col items-center justify-center py-12">
-                    <Camera className="h-12 w-12 text-muted-foreground/50" />
-                    <p className="mt-2 text-muted-foreground">Nenhuma câmera configurada</p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+                  ))}
+                </div>
+                <div className="mt-6 p-4 rounded-lg bg-primary/10 border border-primary/20">
+                  <p className="text-sm">
+                    <span className="font-medium text-primary">Sistema em desenvolvimento:</span>{' '}
+                    <span className="text-muted-foreground">
+                      As câmeras serão instaladas para monitoramento 24/7 da estrutura, permitindo inspeção visual remota e detecção de anomalias.
+                    </span>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Service Dashboard Tab */}
           <TabsContent value="service" className="m-0 space-y-6">
-            {/* System Status */}
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card>
-                <CardContent className="flex items-center gap-4 pt-6">
-                  <div className={cn(
-                    'flex h-12 w-12 items-center justify-center rounded-full',
-                    mockSystemStatus.power === 'ok' ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
-                  )}>
-                    <Activity className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Energia</p>
-                    <p className="text-lg font-semibold capitalize">{mockSystemStatus.power === 'ok' ? 'Normal' : 'Alerta'}</p>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="flex items-center gap-4 pt-6">
-                  <div className={cn(
-                    'flex h-12 w-12 items-center justify-center rounded-full',
-                    mockSystemStatus.communication === 'ok' ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
-                  )}>
-                    <Wifi className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Comunicação</p>
-                    <p className="text-lg font-semibold capitalize">{mockSystemStatus.communication === 'ok' ? 'Normal' : 'Alerta'}</p>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="flex items-center gap-4 pt-6">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <Activity className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Sensores</p>
-                    <p className="text-lg font-semibold">
-                      {mockSystemStatus.sensors.online} online / {mockSystemStatus.sensors.offline} offline
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Failures */}
             <Card>
               <CardHeader>
-                <CardTitle>Falhas Detectadas</CardTitle>
+                <div className="flex items-center gap-2">
+                  <TriangleAlert className="h-5 w-5" />
+                  <div>
+                    <CardTitle>Dashboard Operacional</CardTitle>
+                    <CardDescription>Histórico de problemas estruturais e status dos elementos desta ponte</CardDescription>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {mockSystemStatus.failures.map((failure) => (
-                    <div key={failure.id} className="flex items-center justify-between rounded-lg border p-3">
-                      <div className="flex items-center gap-3">
-                        <AlertTriangle className={cn('h-5 w-5', getSeverityConfig(failure.severity).className)} />
+                {/* KPI Cards */}
+                <div className="grid gap-4 md:grid-cols-4 mb-6">
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
                         <div>
-                          <p className="font-medium">{failure.description}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(failure.timestamp), { addSuffix: true, locale: ptBR })}
-                          </p>
+                          <p className="text-sm text-muted-foreground">Problemas Detectados</p>
+                          <p className="text-3xl font-bold">{bridgeProblems.length || 3}</p>
+                          <p className="text-xs text-muted-foreground">Últimos 90 dias</p>
+                        </div>
+                        <TriangleAlert className="h-5 w-5 text-warning" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Manutenções Pendentes</p>
+                          <p className="text-3xl font-bold">2</p>
+                          <p className="text-xs text-muted-foreground">Requer atenção</p>
+                        </div>
+                        <Wrench className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Interdições Parciais</p>
+                          <p className="text-3xl font-bold">0</p>
+                          <p className="text-xs text-muted-foreground">Faixas bloqueadas</p>
+                        </div>
+                        <XCircle className="h-5 w-5 text-destructive" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Inspeções Realizadas</p>
+                          <p className="text-3xl font-bold">12</p>
+                          <p className="text-xs text-muted-foreground">Últimos 180 dias</p>
+                        </div>
+                        <CheckCircle className="h-5 w-5 text-success" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Structural Problems */}
+                <div className="mb-6">
+                  <h4 className="font-medium mb-3">Registro de Problemas Estruturais (Últimos 90 dias)</h4>
+                  <div className="space-y-3">
+                    {bridgeProblems.slice(0, 3).map((problem) => (
+                      <div key={problem.id} className="flex items-center justify-between rounded-lg border p-4">
+                        <div className="grid grid-cols-3 gap-8 flex-1">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Tipo</p>
+                            <Badge variant="outline" className="mt-1">{problem.type}</Badge>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Descrição</p>
+                            <p className="text-sm">{problem.description}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Data</p>
+                            <p className="text-sm">{format(new Date(problem.date), 'dd/MM/yyyy', { locale: ptBR })}</p>
+                          </div>
+                        </div>
+                        <Badge className={getProblemStatusConfig(problem.status).className}>
+                          {problem.status}
+                        </Badge>
+                      </div>
+                    ))}
+                    {bridgeProblems.length === 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between rounded-lg border p-4">
+                          <div className="grid grid-cols-3 gap-8 flex-1">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Tipo</p>
+                              <Badge variant="outline" className="mt-1">Fissura</Badge>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Descrição</p>
+                              <p className="text-sm">Fissura longitudinal na viga V2, extensão 1.8m</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Data</p>
+                              <p className="text-sm">22/12/2025</p>
+                            </div>
+                          </div>
+                          <Badge className="bg-primary text-primary-foreground">Em Análise</Badge>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border p-4">
+                          <div className="grid grid-cols-3 gap-8 flex-1">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Tipo</p>
+                              <Badge variant="outline" className="mt-1">Desgaste</Badge>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Descrição</p>
+                              <p className="text-sm">Desgaste superficial no tabuleiro, trecho 0+085</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Data</p>
+                              <p className="text-sm">14/12/2025</p>
+                            </div>
+                          </div>
+                          <Badge className="bg-orange-500 text-white">Agendado</Badge>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border p-4">
+                          <div className="grid grid-cols-3 gap-8 flex-1">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Tipo</p>
+                              <Badge variant="outline" className="mt-1">Limpeza</Badge>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Descrição</p>
+                              <p className="text-sm">Acúmulo de detritos no sistema de drenagem</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Data</p>
+                              <p className="text-sm">05/12/2025</p>
+                            </div>
+                          </div>
+                          <Badge className="bg-success text-success-foreground">Corrigido</Badge>
                         </div>
                       </div>
-                      <Badge variant="outline" className={getSeverityConfig(failure.severity).className}>
-                        {getSeverityConfig(failure.severity).label}
-                      </Badge>
-                    </div>
-                  ))}
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Actions */}
+            {/* Service Dashboard */}
             <Card>
               <CardHeader>
-                <CardTitle>Ações</CardTitle>
+                <CardTitle>Dashboard de Serviço</CardTitle>
+                <CardDescription>Métricas operacionais e indicadores de desempenho</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex gap-3">
-                  <Button variant="outline">
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Reiniciar Dispositivo
-                  </Button>
-                  <Button variant="outline">
-                    <AlertTriangle className="mr-2 h-4 w-4" />
-                    Abrir Chamado
-                  </Button>
-                  <Button variant="outline">
-                    <FileText className="mr-2 h-4 w-4" />
-                    Gerar Relatório
-                  </Button>
+                <div className="grid gap-4 md:grid-cols-3 mb-6">
+                  <Card>
+                    <CardContent className="p-4">
+                      <p className="text-sm text-muted-foreground">Uptime do Sistema</p>
+                      <p className="text-2xl font-bold text-success">99.8%</p>
+                      <p className="text-xs text-muted-foreground">Últimos 30 dias</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <p className="text-sm text-muted-foreground">Sensores Ativos</p>
+                      <p className="text-2xl font-bold text-primary">{bridge.sensorCount}/{bridge.sensorCount}</p>
+                      <p className="text-xs text-muted-foreground">Funcionando normalmente</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <p className="text-sm text-muted-foreground">Alertas Pendentes</p>
+                      <p className="text-2xl font-bold text-warning">2</p>
+                      <p className="text-xs text-muted-foreground">Requerem atenção</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <h4 className="font-medium mb-3">Status dos Serviços</h4>
+                <div className="space-y-2">
+                  {serviceStatuses.map((service, i) => (
+                    <div key={i} className="flex items-center justify-between rounded-lg border p-3">
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "w-2 h-2 rounded-full",
+                          service.status === 'online' ? 'bg-success' : service.status === 'attention' ? 'bg-warning' : 'bg-destructive'
+                        )} />
+                        <div>
+                          <p className="font-medium">{service.name}</p>
+                          <p className="text-xs text-muted-foreground">{service.description}</p>
+                        </div>
+                      </div>
+                      <Badge className={getStatusConfig(service.status).className}>
+                        {service.status === 'online' ? 'Online' : service.status === 'attention' ? 'Atenção' : 'Offline'}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+
+                <h4 className="font-medium mb-3 mt-6">Eventos Recentes do Sistema</h4>
+                <div className="space-y-2">
+                  {systemEvents.map((event, i) => (
+                    <div key={i} className="flex items-center gap-3 text-sm">
+                      <span className="text-muted-foreground font-mono">{event.time}</span>
+                      <span>{event.description}</span>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
           {/* Schedules Tab */}
-          <TabsContent value="schedules" className="m-0">
-            <Card>
-              <CardHeader>
-                <CardTitle>Programações</CardTitle>
-                <CardDescription>Inspeções e manutenções agendadas</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Título</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Data Agendada</TableHead>
-                      <TableHead>Responsável</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {schedules.map((schedule) => {
-                      const statusConfig = getStatusConfig(schedule.status);
-                      return (
-                        <TableRow key={schedule.id}>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{schedule.title}</p>
-                              {schedule.description && (
-                                <p className="text-xs text-muted-foreground">{schedule.description}</p>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="capitalize">
-                            {schedule.type === 'inspection' ? 'Inspeção' : 'Manutenção'}
-                          </TableCell>
-                          <TableCell>
-                            {format(new Date(schedule.scheduledDate), 'dd/MM/yyyy', { locale: ptBR })}
-                          </TableCell>
-                          <TableCell>{schedule.responsibleUser}</TableCell>
-                          <TableCell>
-                            <Badge className={statusConfig.className}>
-                              {statusConfig.label}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {schedules.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground">
-                          Nenhuma programação registrada
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+          <TabsContent value="schedules" className="m-0 space-y-4">
+            {bridgeInterventions.length > 0 || schedules.length > 0 ? (
+              [...bridgeInterventions, ...schedules.map(s => ({
+                id: s.id,
+                bridgeId: s.bridgeId,
+                bridgeName: bridge.name,
+                priority: 'Média' as const,
+                type: s.type === 'inspection' ? 'Inspeção' as const : 'Manutenção' as const,
+                description: s.description || s.title,
+                scheduledDate: s.scheduledDate.split('T')[0],
+                estimatedDuration: '1 dias',
+                team: s.responsibleUser,
+              }))].map((item) => (
+                <Card key={item.id}>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-semibold text-lg">{item.type}</h3>
+                        <p className="text-muted-foreground">{item.description}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium">{format(new Date(item.scheduledDate), 'dd/MM/yyyy', { locale: ptBR })}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge className={getPriorityConfig(item.priority).className}>
+                            {item.priority.toLowerCase()}
+                          </Badge>
+                          <Badge variant="outline">Agendada</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <>
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-semibold text-lg">Inspeção</h3>
+                        <p className="text-muted-foreground">Inspeção semestral de rotina</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium">14/09/2025</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge className="bg-orange-500 text-white">medium</Badge>
+                          <Badge variant="outline">Agendada</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-semibold text-lg">Manutenção</h3>
+                        <p className="text-muted-foreground">Manutenção de juntas de dilatação e pintura anticorrosiva</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium">19/11/2025</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge className="bg-orange-500 text-white">medium</Badge>
+                          <Badge variant="outline">Agendada</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-semibold text-lg">Manutenção</h3>
+                        <p className="text-muted-foreground">Manutenção preventiva do sistema de drenagem</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium">14/07/2025</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge className="bg-orange-500 text-white">medium</Badge>
+                          <Badge className="bg-success text-success-foreground">Concluída</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </TabsContent>
         </div>
       </Tabs>

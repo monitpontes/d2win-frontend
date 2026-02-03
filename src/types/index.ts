@@ -51,12 +51,18 @@ export interface Bridge {
   spanType: string;
   material: string;
   length: number;
+  width?: number;
+  constructionYear?: number;
+  capacity?: number;
+  lastMajorIntervention?: string;
   structuralStatus: StructuralStatus;
   operationalCriticality: OperationalCriticality;
+  operationalImpact?: string;
   sensorCount: number;
   hasActiveAlerts: boolean;
   lastUpdate: string;
   image?: string;
+  geoReferencedImage?: string;
   coordinates?: { lat: number; lng: number };
   supportCount?: number;
 }
@@ -141,10 +147,25 @@ export interface Document {
   id: string;
   bridgeId: string;
   name: string;
-  type: 'project' | 'report' | 'video' | 'bim' | 'other';
+  type: 'project' | 'report' | 'video' | 'bim' | 'cde' | 'api' | 'other';
+  description?: string;
   url: string;
   uploadedBy: string;
   uploadedAt: string;
+  status?: 'active' | 'connected' | 'pending';
+}
+
+// Service Status for bridge detail
+export interface ServiceStatus {
+  name: string;
+  status: 'online' | 'attention' | 'offline';
+  description: string;
+}
+
+// System Event for bridge
+export interface SystemEvent {
+  time: string;
+  description: string;
 }
 
 // Dashboard filters
