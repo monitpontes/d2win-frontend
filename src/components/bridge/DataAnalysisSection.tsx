@@ -69,47 +69,47 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
     description: 'Sensor accel1-Z registrou valores 8821% acima da média por aproximadamente 31 minutos. Aceleração RMS elevada no eixo Z: 10.706 m/s² (limite: 10.5 m/s²)',
   };
 
-  // Mock KPI data
+  // Mock KPI data (Acceleration: 9.5-11 m/s², Frequency: 3.20-4.20 Hz)
   const kpiData = {
-    frequencyAvg: 4.08,
-    frequencyMin: 0,
-    accelerationAvg: 9.18,
-    accelerationMin: 0,
-    accelerationMax: 9.512,
-    accelerationPeak: 11.723,
-    frequencyMax: 4.49,
-    frequencyPeak: 8.100,
+    frequencyAvg: 3.68,
+    frequencyMin: 3.22,
+    accelerationAvg: 9.85,
+    accelerationMin: 9.52,
+    accelerationMax: 10.45,
+    accelerationPeak: 10.92,
+    frequencyMax: 4.15,
+    frequencyPeak: 4.18,
     vibrationLevel: 21.8,
     structuralStatus: 'Crítico',
   };
 
-  // Mock time series data with X, Y, Z axes for acceleration
+  // Mock time series data with X, Y, Z axes for acceleration (9.5-11 m/s²)
   const timeSeriesAcceleration = useMemo(() => {
     return Array.from({ length: 30 }, (_, i) => ({
       date: `${String(i + 1).padStart(2, '0')}/01`,
-      valueX: 9.2 + Math.random() * 0.5 + (i === 15 ? 1.5 : 0),
-      valueY: 9.0 + Math.random() * 0.3 + (i === 15 ? 1.2 : 0),
-      valueZ: 9.4 + Math.random() * 0.4 + (i === 15 ? 1.8 : 0),
-      anomalyX: i === 15 ? 10.7 : null,
-      anomalyY: i === 15 ? 10.2 : null,
-      anomalyZ: i === 15 ? 11.2 : null,
+      valueX: 9.5 + Math.random() * 0.8 + (i === 15 ? 0.9 : 0),
+      valueY: 9.6 + Math.random() * 0.7 + (i === 15 ? 0.8 : 0),
+      valueZ: 9.7 + Math.random() * 0.9 + (i === 15 ? 1.0 : 0),
+      anomalyX: i === 15 ? 10.4 : null,
+      anomalyY: i === 15 ? 10.4 : null,
+      anomalyZ: i === 15 ? 10.7 : null,
     }));
   }, []);
 
-  // Mock time series data with X, Z axes for frequency (4 sensors)
+  // Mock time series data with X, Z axes for frequency (3.20-4.20 Hz)
   const timeSeriesFrequency = useMemo(() => {
     return Array.from({ length: 30 }, (_, i) => ({
       date: `${String(i + 1).padStart(2, '0')}/01`,
-      s1X: 4.5 + Math.random() * 0.3,
-      s1Z: 4.6 + Math.random() * 0.2,
-      s2X: 4.4 + Math.random() * 0.25,
-      s2Z: 4.5 + Math.random() * 0.3,
-      s3X: 4.3 + Math.random() * 0.35,
-      s3Z: 4.4 + Math.random() * 0.25,
-      s4X: 4.6 + Math.random() * 0.2,
-      s4Z: 4.7 + Math.random() * 0.15,
-      referenceX: 4.8,
-      referenceZ: 4.9,
+      s1X: 3.5 + Math.random() * 0.5,
+      s1Z: 3.6 + Math.random() * 0.4,
+      s2X: 3.4 + Math.random() * 0.6,
+      s2Z: 3.5 + Math.random() * 0.5,
+      s3X: 3.3 + Math.random() * 0.5,
+      s3Z: 3.4 + Math.random() * 0.6,
+      s4X: 3.6 + Math.random() * 0.4,
+      s4Z: 3.7 + Math.random() * 0.5,
+      referenceX: 3.7,
+      referenceZ: 3.7,
     }));
   }, []);
 
@@ -125,37 +125,39 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
   // Distribution data based on axis and data type
   const distributionData = useMemo(() => {
     if (distDataTypeFilter === 'Aceleração') {
+      // Acceleration values: 9.5-11 m/s²
       return [
-        { range: '8.5-9.0', count: 45 },
-        { range: '9.0-9.3', count: 180 },
-        { range: '9.3-9.6', count: 280 },
-        { range: '9.6-9.9', count: 260 },
-        { range: '9.9-10.2', count: 30 },
-        { range: '>10.2', count: 5 },
+        { range: '9.5-9.7', count: 85 },
+        { range: '9.7-9.9', count: 180 },
+        { range: '9.9-10.1', count: 280 },
+        { range: '10.1-10.3', count: 220 },
+        { range: '10.3-10.5', count: 25 },
+        { range: '>10.5', count: 10 },
       ];
     }
+    // Frequency values: 3.20-4.20 Hz
     return [
-      { range: '3.5-4.0', count: 50 },
-      { range: '4.0-4.3', count: 180 },
-      { range: '4.3-4.6', count: 320 },
-      { range: '4.6-4.9', count: 280 },
-      { range: '4.9-5.2', count: 120 },
-      { range: '>5.2', count: 20 },
+      { range: '3.2-3.4', count: 60 },
+      { range: '3.4-3.6', count: 150 },
+      { range: '3.6-3.8', count: 320 },
+      { range: '3.8-4.0', count: 280 },
+      { range: '4.0-4.2', count: 140 },
+      { range: '>4.2', count: 20 },
     ];
   }, [distDataTypeFilter]);
 
-  // Beam comparison data with sensor filters
+  // Beam comparison data with sensor filters (3.20-4.20 Hz)
   const beamComparisonData = useMemo(() => {
     return Array.from({ length: 30 }, (_, i) => ({
       date: `${String(i + 1).padStart(2, '0')}/01`,
-      s1X: 4.5 + Math.random() * 0.2,
-      s1Z: 4.6 + Math.random() * 0.15,
-      s2X: 4.4 + Math.random() * 0.25,
-      s2Z: 4.5 + Math.random() * 0.2,
-      s3X: 4.3 + Math.random() * 0.2,
-      s3Z: 4.4 + Math.random() * 0.18,
-      s4X: 4.6 + Math.random() * 0.15,
-      s4Z: 4.7 + Math.random() * 0.12,
+      s1X: 3.5 + Math.random() * 0.5,
+      s1Z: 3.6 + Math.random() * 0.4,
+      s2X: 3.4 + Math.random() * 0.55,
+      s2Z: 3.5 + Math.random() * 0.5,
+      s3X: 3.3 + Math.random() * 0.5,
+      s3Z: 3.4 + Math.random() * 0.55,
+      s4X: 3.6 + Math.random() * 0.4,
+      s4Z: 3.7 + Math.random() * 0.45,
     }));
   }, []);
 
@@ -210,10 +212,10 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
         <ComposedChart data={timeSeriesAcceleration}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
           <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-          <YAxis domain={[8, 12]} tick={{ fontSize: 9 }} label={{ value: `${metricFilter} Eixo ${accelAxisFilter} (m/s²)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
+          <YAxis domain={[9.2, 11.2]} tick={{ fontSize: 9 }} label={{ value: `${metricFilter} Eixo ${accelAxisFilter} (m/s²)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <ReferenceLine y={11} stroke="hsl(220, 10%, 60%)" strokeDasharray="8 4" label={{ value: 'Limite Crítico', fontSize: 9, fill: 'hsl(220, 10%, 50%)' }} />
+          <ReferenceLine y={10.8} stroke="hsl(220, 10%, 60%)" strokeDasharray="8 4" label={{ value: 'Limite Crítico', fontSize: 9, fill: 'hsl(220, 10%, 50%)' }} />
           <ReferenceLine y={10.5} stroke="hsl(0, 84%, 60%)" strokeDasharray="5 5" label={{ value: 'Limite Alerta', fontSize: 9, fill: 'hsl(0, 84%, 60%)' }} />
           
           {(showAll || accelAxisFilter === 'X') && (
@@ -263,10 +265,10 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
         <LineChart data={timeSeriesFrequency}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
           <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-          <YAxis domain={[3.5, 5.5]} tick={{ fontSize: 9 }} label={{ value: `domFreq1 Eixo ${freqAxisFilter} (Hz)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
+          <YAxis domain={[3.0, 4.5]} tick={{ fontSize: 9 }} label={{ value: `domFreq1 Eixo ${freqAxisFilter} (Hz)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <ReferenceLine y={4.8} stroke="hsl(220, 10%, 60%)" strokeDasharray="5 5" label={{ value: 'Referência', fontSize: 9 }} />
+          <ReferenceLine y={3.7} stroke="hsl(220, 10%, 60%)" strokeDasharray="5 5" label={{ value: 'Referência', fontSize: 9 }} />
           
           {showAll ? (
             <>
@@ -310,7 +312,7 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
         <LineChart data={beamComparisonData}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
           <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-          <YAxis domain={[3.5, 5.5]} tick={{ fontSize: 9 }} label={{ value: `domFreq1 Eixo ${beamAxisFilter} (Hz)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
+          <YAxis domain={[3.0, 4.5]} tick={{ fontSize: 9 }} label={{ value: `domFreq1 Eixo ${beamAxisFilter} (Hz)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 10 }} />
           <Line 
