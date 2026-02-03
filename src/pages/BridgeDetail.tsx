@@ -235,40 +235,38 @@ export default function BridgeDetail() {
       {/* Tabs */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1">
         <div className="border-b bg-card">
-          <div className="px-6">
-            <TabsList className="h-14 w-full justify-start gap-1 bg-transparent p-0">
-              <TabsTrigger 
-                value="monitoring" 
-                className="relative h-14 rounded-none border-b-2 border-transparent px-6 font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
-              >
-                Monitoramento e Dados
-              </TabsTrigger>
-              <TabsTrigger 
-                value="specifications" 
-                className="relative h-14 rounded-none border-b-2 border-transparent px-6 font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
-              >
-                Especificações
-              </TabsTrigger>
-              <TabsTrigger 
-                value="cameras" 
-                className="relative h-14 rounded-none border-b-2 border-transparent px-6 font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
-              >
-                Câmeras
-              </TabsTrigger>
-              <TabsTrigger 
-                value="service" 
-                className="relative h-14 rounded-none border-b-2 border-transparent px-6 font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
-              >
-                Dashboard de Serviço
-              </TabsTrigger>
-              <TabsTrigger 
-                value="schedules" 
-                className="relative h-14 rounded-none border-b-2 border-transparent px-6 font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
-              >
-                Programações
-              </TabsTrigger>
-            </TabsList>
-          </div>
+          <TabsList className="h-14 w-full justify-stretch gap-0 rounded-none bg-transparent p-0">
+            <TabsTrigger 
+              value="monitoring" 
+              className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              Monitoramento e Dados
+            </TabsTrigger>
+            <TabsTrigger 
+              value="specifications" 
+              className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              Especificações
+            </TabsTrigger>
+            <TabsTrigger 
+              value="cameras" 
+              className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              Câmeras
+            </TabsTrigger>
+            <TabsTrigger 
+              value="service" 
+              className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              Dashboard de Serviço
+            </TabsTrigger>
+            <TabsTrigger 
+              value="schedules" 
+              className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              Programações
+            </TabsTrigger>
+          </TabsList>
         </div>
 
         <div className="p-6">
