@@ -1,55 +1,84 @@
 
 
-# Plano: Corrigir Carregamento da URL da API
+# Plano: Corrigir Loop de Redirecionamento e Problemas de Login
 
-## Problema Identificado
+## Problemas Identificados
 
-A variável de ambiente `VITE_API_URL` existe nos secrets do projeto, mas **não está chegando ao código**. Nos logs do console vemos:
+### 1. AuthProvider Duplicado
+O `AuthProvider` está sendo renderizado **duas vezes**:
+- Uma vez em `src/main.tsx` (linha 7-9)
+- Outra vez em `src/App.tsx` (linha 19)
 
-- `[API Request] GET /companies` - Note que não há baseURL antes do `/companies`
-- A resposta é HTML (a página do Lovable) em vez de JSON da API
-- O "Count: 1371" é o tamanho do HTML em caracteres, não quantidade de registros
+Isso causa conflitos de contexto e erros intermitentes.
 
-Isso acontece porque variáveis `VITE_*` são injetadas **no momento do build**, e o código atual pode estar usando um cache antigo.
+### 2. Loop de Redirecionamento por Erro 401
+Quando um usuário tenta fazer login e a API retorna um erro 401 (token inválido ou expirado), o interceptor do axios:
+1. Limpa todos os tokens
+2. Redireciona para `/login` via `window.location.href`
+
+Mas este comportamento está acontecendo **também durante o processo de login**, causando loop infinito.
+
+### 3. Verificação de API Configurada
+A função `isApiConfigured()` verifica apenas `VITE_API_URL`, mas como agora temos um fallback hardcoded, ela sempre retorna `false` quando a variável de ambiente não está definida - mesmo com o fallback funcionando.
 
 ---
 
 ## Solução
 
-### Fase 1: Forçar Rebuild com Variável de Ambiente
+### Fase 1: Remover AuthProvider Duplicado
 
-Adicionar um log no cliente API para mostrar a URL configurada, permitindo diagnosticar se a variável está sendo carregada:
+Manter apenas UM `AuthProvider` - no `App.tsx` (que é o padrão correto).
 
+**Arquivo:** `src/main.tsx`
 ```typescript
-// src/lib/api/client.ts
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+import "./index.css";
 
-console.log('[API] Configured baseURL:', API_URL || '(empty - using relative URLs)');
+createRoot(document.getElementById("root")!).render(<App />);
 ```
 
-### Fase 2: Adicionar Fallback para URL Hardcoded (Temporário)
+### Fase 2: Corrigir Verificação de API Configurada
 
-Como medida de segurança, adicionar a URL da API como fallback caso a variável de ambiente falhe:
+Atualizar a função para também considerar o fallback.
 
+**Arquivo:** `src/contexts/AuthContext.tsx`
 ```typescript
-const API_URL = import.meta.env.VITE_API_URL || 'https://d2win-api.onrender.com';
+// Verifica se a API está disponível (sempre true agora com fallback)
+const isApiConfigured = (): boolean => {
+  // Com fallback hardcoded, API está sempre configurada
+  return true;
+};
 ```
 
-### Fase 3: Validar Tipo de Resposta
+### Fase 3: Evitar Loop de Redirecionamento no 401
 
-Adicionar validação no interceptor para detectar respostas HTML inesperadas:
+Modificar o interceptor para **não redirecionar durante o login**.
 
+**Arquivo:** `src/lib/api/client.ts`
 ```typescript
 api.interceptors.response.use(
   (response) => {
-    // Detectar se recebeu HTML em vez de JSON
-    if (typeof response.data === 'string' && response.data.includes('<!doctype')) {
-      console.error('[API] Received HTML instead of JSON - check API_URL configuration');
-      throw new Error('API returned HTML instead of JSON. Check VITE_API_URL configuration.');
-    }
-    return response;
+    // ... código existente
   },
-  // ...
+  (error) => {
+    console.error(`[API Error]...`, { ... });
+    
+    // Evitar loop: não redirecionar se já está na página de login
+    // ou se é uma requisição de login/auth
+    const isAuthRequest = error.config?.url?.includes('/auth/');
+    const isLoginPage = window.location.pathname === '/login';
+    
+    if (error.response?.status === 401 && !isAuthRequest && !isLoginPage) {
+      localStorage.removeItem('d2win_token');
+      sessionStorage.removeItem('d2win_token');
+      localStorage.removeItem('d2win_user');
+      sessionStorage.removeItem('d2win_session');
+      window.location.href = '/login';
+    }
+    
+    return Promise.reject(error);
+  }
 );
 ```
 
@@ -59,82 +88,63 @@ api.interceptors.response.use(
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/lib/api/client.ts` | Adicionar fallback para URL da API e validação de resposta HTML |
+| `src/main.tsx` | Remover AuthProvider duplicado |
+| `src/contexts/AuthContext.tsx` | Atualizar `isApiConfigured()` para retornar `true` |
+| `src/lib/api/client.ts` | Evitar loop de 401 durante autenticação |
 
 ---
 
-## Seção Técnica
+## Seção Técnica Detalhada
 
-### Código Completo do client.ts
+### Por que os logins do banco não estão funcionando?
 
-```typescript
-import axios from 'axios';
+Olhando a imagem que você enviou, os usuários no MongoDB são:
+- `admin@d2win.com` (company_id: null)
+- `jmeneses682@gmail.com`
+- `testeuser@viewer.com`
+- `viewermotiva@d2win.com`
 
-// Fallback para URL da API caso variável de ambiente não carregue
-const API_URL = import.meta.env.VITE_API_URL || 'https://d2win-api.onrender.com';
+O problema é que:
+1. O login provavelmente está funcionando na API
+2. Mas o interceptor de 401 está limpando a sessão imediatamente após
 
-console.log('[API] Configured baseURL:', API_URL);
+### Fluxo atual (com bug):
+```
+1. Usuário faz login
+2. API retorna token + user
+3. Token é salvo no storage
+4. Navigate para /dashboard
+5. initAuth() é chamado
+6. /auth/me é chamado
+7. Se houver qualquer erro -> limpa storage e redireciona para /login
+8. Loop infinito
+```
 
-export const api = axios.create({
-  baseURL: API_URL,
-  headers: { 'Content-Type': 'application/json' },
-  timeout: 30000,
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('d2win_token') || sessionStorage.getItem('d2win_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  console.log(`[API Request] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
-  return config;
-});
-
-api.interceptors.response.use(
-  (response) => {
-    // Detectar resposta HTML inesperada
-    if (typeof response.data === 'string' && response.data.includes('<!doctype')) {
-      console.error('[API] Received HTML instead of JSON - check API_URL configuration');
-      throw new Error('API returned HTML instead of JSON');
-    }
-    console.log(`[API Response] ${response.config.method?.toUpperCase()} ${response.config.url}`, response.data);
-    return response;
-  },
-  (error) => {
-    console.error(`[API Error] ${error.config?.method?.toUpperCase()} ${error.config?.url}`, {
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message,
-    });
-    
-    if (error.response?.status === 401) {
-      localStorage.removeItem('d2win_token');
-      sessionStorage.removeItem('d2win_token');
-      localStorage.removeItem('d2win_user');
-      sessionStorage.removeItem('d2win_session');
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
-
-export default api;
+### Fluxo corrigido:
+```
+1. Usuário faz login
+2. API retorna token + user
+3. Token é salvo no storage
+4. Navigate para /dashboard
+5. initAuth() é chamado
+6. /auth/me é chamado (com token válido)
+7. Se sucesso -> mantém sessão
+8. Se erro 401 (e não é request de auth) -> redireciona
 ```
 
 ---
 
 ## Resultado Esperado
 
-Após a implementação:
-1. O log mostrará `[API] Configured baseURL: https://d2win-api.onrender.com`
-2. As requisições irão para a API correta
-3. Os dados de empresas e pontes serão carregados
-4. O dashboard mostrará os KPIs reais
+Após implementação:
+1. Login com usuários do banco (`admin@d2win.com`, etc.) funcionará
+2. Não haverá mais loop de redirecionamento
+3. Dashboard carregará normalmente após login bem-sucedido
 
 ---
 
 ## Estimativa
 
-- **Tempo**: ~5 minutos
-- **Arquivos**: 1
+- **Tempo:** ~10 minutos
+- **Arquivos:** 3
 
