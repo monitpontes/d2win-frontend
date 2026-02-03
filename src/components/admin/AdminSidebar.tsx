@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Building2, Plus } from 'lucide-react';
+import { Building2, Plus, Pencil, Trash2, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { mockCompanies } from '@/data/mockData';
@@ -9,10 +9,32 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+
+interface Company {
+  id: string;
+  name: string;
+}
 
 interface AdminSidebarProps {
   selectedCompanyId: string;
@@ -21,14 +43,47 @@ interface AdminSidebarProps {
 
 export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSidebarProps) {
   const [isAddCompanyOpen, setIsAddCompanyOpen] = useState(false);
-  const [newCompanyName, setNewCompanyName] = useState('');
+  const [isEditCompanyOpen, setIsEditCompanyOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [companyName, setCompanyName] = useState('');
 
   const handleAddCompany = () => {
-    if (newCompanyName.trim()) {
-      toast.success(`Empresa "${newCompanyName}" adicionada com sucesso!`);
-      setNewCompanyName('');
+    if (companyName.trim()) {
+      toast.success(`Empresa "${companyName}" adicionada com sucesso!`);
+      setCompanyName('');
       setIsAddCompanyOpen(false);
     }
+  };
+
+  const handleEditCompany = () => {
+    if (companyName.trim() && selectedCompany) {
+      toast.success(`Empresa "${selectedCompany.name}" atualizada para "${companyName}"!`);
+      setCompanyName('');
+      setSelectedCompany(null);
+      setIsEditCompanyOpen(false);
+    }
+  };
+
+  const handleDeleteCompany = () => {
+    if (selectedCompany) {
+      toast.success(`Empresa "${selectedCompany.name}" excluída com sucesso!`);
+      setSelectedCompany(null);
+      setIsDeleteDialogOpen(false);
+    }
+  };
+
+  const openEditDialog = (company: Company, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedCompany(company);
+    setCompanyName(company.name);
+    setIsEditCompanyOpen(true);
+  };
+
+  const openDeleteDialog = (company: Company, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedCompany(company);
+    setIsDeleteDialogOpen(true);
   };
 
   return (
@@ -44,7 +99,10 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
             variant="ghost" 
             size="icon" 
             className="h-6 w-6"
-            onClick={() => setIsAddCompanyOpen(true)}
+            onClick={() => {
+              setCompanyName('');
+              setIsAddCompanyOpen(true);
+            }}
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -54,26 +112,60 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
       {/* Companies List */}
       <div className="flex-1 overflow-y-auto p-2">
         {mockCompanies.map((company) => (
-          <button
+          <div
             key={company.id}
-            onClick={() => onSelectCompany(company.id)}
             className={cn(
-              "w-full text-left px-3 py-2.5 rounded-lg transition-colors mb-1",
+              "group relative w-full text-left px-3 py-2.5 rounded-lg transition-colors mb-1 cursor-pointer",
               selectedCompanyId === company.id
                 ? "bg-primary text-primary-foreground"
                 : "hover:bg-muted"
             )}
+            onClick={() => onSelectCompany(company.id)}
           >
-            <p className="font-medium text-sm">{company.name}</p>
-            <p className={cn(
-              "text-xs",
-              selectedCompanyId === company.id
-                ? "text-primary-foreground/70"
-                : "text-muted-foreground"
-            )}>
-              pontes • ID: {company.id.replace('company-', '')}
-            </p>
-          </button>
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm truncate">{company.name}</p>
+                <p className={cn(
+                  "text-xs",
+                  selectedCompanyId === company.id
+                    ? "text-primary-foreground/70"
+                    : "text-muted-foreground"
+                )}>
+                  pontes • ID: {company.id.replace('company-', '')}
+                </p>
+              </div>
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      "h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0",
+                      selectedCompanyId === company.id
+                        ? "hover:bg-primary-foreground/20 text-primary-foreground"
+                        : "hover:bg-muted-foreground/20"
+                    )}
+                  >
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-32">
+                  <DropdownMenuItem onClick={(e) => openEditDialog(company, e as unknown as React.MouseEvent)}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Editar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={(e) => openDeleteDialog(company, e as unknown as React.MouseEvent)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Excluir
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
         ))}
       </div>
 
@@ -82,14 +174,15 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nova Empresa</DialogTitle>
+            <DialogDescription>Adicione uma nova empresa ao sistema.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="company-name">Nome da Empresa</Label>
               <Input
                 id="company-name"
-                value={newCompanyName}
-                onChange={(e) => setNewCompanyName(e.target.value)}
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
                 placeholder="Nome da empresa"
               />
             </div>
@@ -104,6 +197,57 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Company Dialog */}
+      <Dialog open={isEditCompanyOpen} onOpenChange={setIsEditCompanyOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Empresa</DialogTitle>
+            <DialogDescription>Atualize as informações da empresa.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-company-name">Nome da Empresa</Label>
+              <Input
+                id="edit-company-name"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Nome da empresa"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditCompanyOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleEditCompany}>
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Empresa</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a empresa "{selectedCompany?.name}"? 
+              Esta ação não pode ser desfeita e todos os dados associados serão removidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteCompany}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
