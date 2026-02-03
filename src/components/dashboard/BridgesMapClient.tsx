@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Loader2 } from 'lucide-react';
+import type { Bridge } from '@/types';
 
 /**
  * IMPORTANTE: este arquivo NÃO importa react-leaflet/leaflet.
@@ -10,9 +11,11 @@ const BridgesMapLeaflet = React.lazy(() => import('./BridgesMapLeaflet'));
 
 interface BridgesMapProps {
   compact?: boolean;
+  bridges?: Bridge[];
+  onBridgeClick?: (bridgeId: string) => void;
 }
 
-export default function BridgesMapClient({ compact }: BridgesMapProps) {
+export default function BridgesMapClient({ compact, bridges = [], onBridgeClick }: BridgesMapProps) {
   return (
     <React.Suspense
       fallback={
@@ -23,7 +26,7 @@ export default function BridgesMapClient({ compact }: BridgesMapProps) {
         </div>
       }
     >
-      <BridgesMapLeaflet compact={compact} />
+      <BridgesMapLeaflet compact={compact} bridges={bridges} onBridgeClick={onBridgeClick} />
     </React.Suspense>
   );
 }

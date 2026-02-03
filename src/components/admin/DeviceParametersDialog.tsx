@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,17 +16,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Download } from 'lucide-react';
+import { Download, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Sensor } from '@/types';
+import { useDevices } from '@/hooks/useDevices';
 
 interface DeviceParametersDialogProps {
-  device: Sensor | null;
+  device: any | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 export function DeviceParametersDialog({ device, open, onOpenChange }: DeviceParametersDialogProps) {
+  const { updateDevice, isUpdating } = useDevices();
+
   const [params, setParams] = useState({
     acquisitionInterval: '60',
     samples: '4096',
@@ -40,11 +42,45 @@ export function DeviceParametersDialog({ device, open, onOpenChange }: DevicePar
   const [autoRestart, setAutoRestart] = useState(false);
   const [firmwareFile, setFirmwareFile] = useState<File | null>(null);
 
+  // Initialize params from device data when it changes
+  useEffect(() => {
+    if (device) {
+      setParams({
+        acquisitionInterval: String(device.acquisitionInterval || device.acquisition_interval || 60),
+        samples: String(device.samples || 4096),
+        samplingFreq: String(device.samplingFreq || device.sampling_freq || 2000),
+        activityThreshold: String(device.activityThreshold || device.activity_threshold || 0.9),
+        operationMode: device.operationMode || device.operation_mode || 'acel',
+        executionMode: device.executionMode || device.execution_mode || 'debug',
+        testMode: device.testMode || device.test_mode || 'completo',
+        firmwareVersion: device.firmwareVersion || device.firmware_version || '3.4.0_autoregister',
+      });
+    }
+  }, [device]);
+
   if (!device) return null;
 
+  const deviceId = device.id || device._id;
+  const deviceName = device.name || device.device_id || 'Dispositivo';
+
   const handleSaveParams = () => {
-    toast.success('Parâmetros salvos com sucesso!');
-    onOpenChange(false);
+    if (!deviceId) {
+      toast.error('ID do dispositivo não encontrado');
+      return;
+    }
+
+    updateDevice({
+      id: deviceId,
+      data: {
+        acquisitionInterval: parseInt(params.acquisitionInterval),
+        samples: parseInt(params.samples),
+        samplingFreq: parseInt(params.samplingFreq),
+        activityThreshold: parseFloat(params.activityThreshold),
+        operationMode: params.operationMode,
+        executionMode: params.executionMode,
+        testMode: params.testMode,
+      }
+    });
   };
 
   const handleStartOTA = () => {
@@ -59,7 +95,7 @@ export function DeviceParametersDialog({ device, open, onOpenChange }: DevicePar
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Editar Parâmetros - {device.name}</DialogTitle>
+          <DialogTitle>Editar Parâmetros - {deviceName}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -101,7 +137,7 @@ export function DeviceParametersDialog({ device, open, onOpenChange }: DevicePar
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-sm">Device Number</Label>
-              <Input value={device.name} disabled />
+              <Input value={deviceName} disabled />
             </div>
             <div className="space-y-2">
               <Label className="text-sm">Intervalo Aquisição</Label>
@@ -227,8 +263,18 @@ export function DeviceParametersDialog({ device, open, onOpenChange }: DevicePar
             <Input value={params.firmwareVersion} disabled />
           </div>
 
-          <Button className="w-full" onClick={handleSaveParams}>
-            Salvar Parâmetros
+          <Button className="w-full" onClick={handleSaveParams} disabled={isUpdating}>
+            {isUpdating ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Salvar Parâmetros
+              </>
+            )}
           </Button>
         </div>
       </DialogContent>

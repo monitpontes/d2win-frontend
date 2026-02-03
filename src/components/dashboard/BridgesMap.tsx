@@ -1,18 +1,21 @@
 import * as React from 'react';
 import { Loader2 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import type { Bridge } from '@/types';
 
 const BridgesMapClient = React.lazy(() => import('./BridgesMapClient'));
 
 interface BridgesMapProps {
   compact?: boolean;
+  bridges?: Bridge[];
+  onBridgeClick?: (bridgeId: string) => void;
 }
 
 /**
  * Wrapper client-only: evita crashes do React-Leaflet/Leaflet durante o bootstrap.
  * O código do mapa (que importa react-leaflet) fica isolado em BridgesMapClient.
  */
-export function BridgesMap({ compact = false }: BridgesMapProps) {
+export function BridgesMap({ compact = false, bridges = [], onBridgeClick }: BridgesMapProps) {
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
@@ -58,7 +61,7 @@ export function BridgesMap({ compact = false }: BridgesMapProps) {
         }
       >
         <div className={`rounded-lg border bg-card overflow-hidden ${mapHeight}`}>
-          <BridgesMapClient compact={compact} />
+          <BridgesMapClient compact={compact} bridges={bridges} onBridgeClick={onBridgeClick} />
         </div>
       </React.Suspense>
     </ErrorBoundary>

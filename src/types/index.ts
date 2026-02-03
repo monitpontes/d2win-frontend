@@ -65,6 +65,7 @@ export interface Bridge {
   geoReferencedImage?: string;
   coordinates?: { lat: number; lng: number };
   supportCount?: number;
+  kmzFile?: string; // URL do arquivo KMZ da ponte
 }
 
 // Sensor types

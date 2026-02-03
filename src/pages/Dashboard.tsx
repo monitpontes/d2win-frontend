@@ -30,10 +30,32 @@ const defaultFilters: DashboardFilters = {
 export default function Dashboard() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
   const [filters, setFilters] = useState<DashboardFilters>(defaultFilters);
+  const [selectedBridgeId, setSelectedBridgeId] = useState<string | null>(null);
   const operationalRef = useRef<HTMLDivElement>(null);
   const interventionsRef = useRef<HTMLDivElement>(null);
 
   const { bridges: allBridges, isLoading } = useBridges(selectedCompanyId);
+
+  // Handle bridge click from map - filter by bridge name
+  const handleBridgeClickOnMap = (bridgeId: string) => {
+    const bridge = allBridges.find(b => b.id === bridgeId);
+    if (bridge) {
+      setSelectedBridgeId(bridgeId);
+      setFilters(prev => ({
+        ...prev,
+        search: bridge.name
+      }));
+    }
+  };
+
+  // Clear filter when clicking same bridge again
+  const clearBridgeFilter = () => {
+    setSelectedBridgeId(null);
+    setFilters(prev => ({
+      ...prev,
+      search: ''
+    }));
+  };
 
   const bridges = useMemo(() => {
     let result = [...allBridges];
@@ -236,7 +258,11 @@ export default function Dashboard() {
             {/* Map + KPI Buttons side by side */}
             <div className="mb-4 grid gap-3 grid-cols-1 lg:grid-cols-4">
               <div className="lg:col-span-3">
-                <BridgesMap compact />
+                <BridgesMap 
+                  compact 
+                  bridges={allBridges}
+                  onBridgeClick={handleBridgeClickOnMap}
+                />
               </div>
               <div className="lg:col-span-1">
                 <KPISummaryCards onNavigateToSection={handleNavigateToSection} />

@@ -30,6 +30,7 @@ export interface ApiBridge {
   supportCount?: number;
   isActive?: boolean;
   createdAt?: string;
+  kmz_file?: string;
 }
 
 // Mapeia ponte da API para formato do frontend
@@ -61,6 +62,7 @@ export function mapApiBridgeToBridge(apiBridge: ApiBridge): Bridge {
     geoReferencedImage: apiBridge.geoReferencedImage,
     coordinates: apiBridge.coordinates,
     supportCount: apiBridge.supportCount,
+    kmzFile: apiBridge.kmz_file,
   };
 }
 
