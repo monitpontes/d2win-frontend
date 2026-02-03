@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { mockBridges, getSensorsByBridge, getEventsByBridge, getCamerasByBridge, getSchedulesByBridge, getDocumentsByBridge, mockSystemStatus, mockStructuralProblems, mockInterventions } from '@/data/mockData';
+import { mockBridges, getSensorsByBridge, getEventsByBridge, getCamerasByBridge, getSchedulesByBridge, getDocumentsByBridge, mockSystemStatus, mockStructuralProblems } from '@/data/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { structuralStatusLabels, type StructuralStatus } from '@/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -8,16 +8,30 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Activity, FileText, Camera, Settings, Calendar, MapPin, AlertTriangle, Wifi, WifiOff, Play, RefreshCw, FileUp, Download, Eye, Wrench, XCircle, CheckCircle, Clock, TriangleAlert, ExternalLink, FolderOpen, History, Video, Link as LinkIcon, Zap, Box, Table as TableIcon } from 'lucide-react';
+import { ArrowLeft, Activity, FileText, Camera, Settings, Calendar, MapPin, AlertTriangle, Wifi, WifiOff, Play, RefreshCw, FileUp, Download, Eye, Wrench, XCircle, CheckCircle, Clock, TriangleAlert, ExternalLink, FolderOpen, History, Video, Link as LinkIcon, Zap, Box, Table as TableIcon, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { ComposedChart, ReferenceLine as ReferenceLineComposed } from 'recharts';
-import type { BridgeEvent } from '@/types';
+import type { BridgeEvent, Intervention } from '@/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
 import Bridge3D, { type Bridge3DSensor } from '@/components/bridge/Bridge3D';
 import DataAnalysisSection from '@/components/bridge/DataAnalysisSection';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { useInterventions, type NewIntervention } from '@/hooks/useInterventions';
+import { CreateInterventionDialog } from '@/components/interventions/CreateInterventionDialog';
+import { exportInterventions, exportSensorData, exportEvents, generateBridgeReport, exportToJSON } from '@/lib/exportUtils';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function BridgeDetail() {
   const { id } = useParams<{ id: string }>();
@@ -25,6 +39,11 @@ export default function BridgeDetail() {
   const [selectedTab, setSelectedTab] = useState('monitoring');
   const [selectedSensor3D, setSelectedSensor3D] = useState<Bridge3DSensor | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<BridgeEvent | null>(null);
+  const [isCreateInterventionOpen, setIsCreateInterventionOpen] = useState(false);
+  const [editingIntervention, setEditingIntervention] = useState<(NewIntervention & { id: string }) | null>(null);
+  const [deleteInterventionId, setDeleteInterventionId] = useState<string | null>(null);
+
+  const { interventions, addIntervention, updateIntervention, deleteIntervention, getInterventionsByBridge } = useInterventions();
 
   const bridge = useMemo(() => mockBridges.find((b) => b.id === id), [id]);
   const sensors = useMemo(() => getSensorsByBridge(id || ''), [id]);
@@ -33,7 +52,7 @@ export default function BridgeDetail() {
   const schedules = useMemo(() => getSchedulesByBridge(id || ''), [id]);
   const documents = useMemo(() => getDocumentsByBridge(id || ''), [id]);
   const bridgeProblems = useMemo(() => mockStructuralProblems.filter(p => p.bridgeId === id), [id]);
-  const bridgeInterventions = useMemo(() => mockInterventions.filter(i => i.bridgeId === id), [id]);
+  const bridgeInterventions = useMemo(() => getInterventionsByBridge(id || ''), [id, interventions]);
 
   const canEdit = hasRole(['admin', 'gestor']);
 
@@ -1229,96 +1248,175 @@ export default function BridgeDetail() {
 
           {/* Schedules Tab */}
           <TabsContent value="schedules" className="m-0 space-y-4">
-            {bridgeInterventions.length > 0 || schedules.length > 0 ? (
-              [...bridgeInterventions, ...schedules.map(s => ({
-                id: s.id,
-                bridgeId: s.bridgeId,
-                bridgeName: bridge.name,
-                priority: 'Média' as const,
-                type: s.type === 'inspection' ? 'Inspeção' as const : 'Manutenção' as const,
-                description: s.description || s.title,
-                scheduledDate: s.scheduledDate.split('T')[0],
-                estimatedDuration: '1 dias',
-                team: s.responsibleUser,
-              }))].map((item) => (
-                <Card key={item.id}>
+            {/* Header with actions */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Programações e Intervenções</h3>
+                <p className="text-sm text-muted-foreground">{bridgeInterventions.length} intervenções agendadas para esta ponte</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    exportInterventions(bridgeInterventions);
+                    toast.success('Exportação iniciada!');
+                  }}
+                  disabled={bridgeInterventions.length === 0}
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  Exportar CSV
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    const report = generateBridgeReport(bridge, sensors, events, bridgeInterventions, bridgeProblems);
+                    exportToJSON(report, `relatorio_${bridge.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`);
+                    toast.success('Relatório JSON gerado!');
+                  }}
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  Relatório JSON
+                </Button>
+                {canEdit && (
+                  <Button size="sm" onClick={() => setIsCreateInterventionOpen(true)}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Nova Intervenção
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Interventions List */}
+            {bridgeInterventions.length > 0 ? (
+              bridgeInterventions.map((item) => (
+                <Card key={item.id} className="group">
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-semibold text-lg">{item.type}</h3>
-                        <p className="text-muted-foreground">{item.description}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium">{format(new Date(item.scheduledDate), 'dd/MM/yyyy', { locale: ptBR })}</p>
-                        <div className="flex items-center gap-2 mt-1">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-lg">{item.type}</h3>
                           <Badge className={getPriorityConfig(item.priority).className}>
-                            {item.priority.toLowerCase()}
+                            {item.priority}
                           </Badge>
-                          <Badge variant="outline">Agendada</Badge>
                         </div>
+                        <p className="text-muted-foreground mb-2">{item.description}</p>
+                        <div className="flex gap-4 text-sm text-muted-foreground">
+                          <span>Duração: {item.estimatedDuration}</span>
+                          <span>Equipe: {item.team}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <div className="text-right">
+                          <p className="font-medium">{format(new Date(item.scheduledDate), 'dd/MM/yyyy', { locale: ptBR })}</p>
+                          <Badge variant="outline" className="mt-1">Agendada</Badge>
+                        </div>
+                        {canEdit && (
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8"
+                              onClick={() => setEditingIntervention({
+                                id: item.id,
+                                bridgeId: item.bridgeId,
+                                priority: item.priority,
+                                type: item.type,
+                                description: item.description,
+                                scheduledDate: item.scheduledDate,
+                                estimatedDuration: item.estimatedDuration,
+                                team: item.team,
+                              })}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => setDeleteInterventionId(item.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               ))
             ) : (
-              <>
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-semibold text-lg">Inspeção</h3>
-                        <p className="text-muted-foreground">Inspeção semestral de rotina</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium">14/09/2025</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge className="bg-orange-500 text-white">medium</Badge>
-                          <Badge variant="outline">Agendada</Badge>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-semibold text-lg">Manutenção</h3>
-                        <p className="text-muted-foreground">Manutenção de juntas de dilatação e pintura anticorrosiva</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium">19/11/2025</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge className="bg-orange-500 text-white">medium</Badge>
-                          <Badge variant="outline">Agendada</Badge>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-semibold text-lg">Manutenção</h3>
-                        <p className="text-muted-foreground">Manutenção preventiva do sistema de drenagem</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium">14/07/2025</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge className="bg-orange-500 text-white">medium</Badge>
-                          <Badge className="bg-success text-success-foreground">Concluída</Badge>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <h3 className="font-semibold mb-2">Nenhuma intervenção agendada</h3>
+                  <p className="text-muted-foreground mb-4">Crie uma nova intervenção para esta ponte.</p>
+                  {canEdit && (
+                    <Button onClick={() => setIsCreateInterventionOpen(true)}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Criar primeira intervenção
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
         </div>
       </Tabs>
+
+      {/* Create Intervention Dialog */}
+      <CreateInterventionDialog
+        open={isCreateInterventionOpen}
+        onOpenChange={setIsCreateInterventionOpen}
+        onSubmit={(data) => {
+          addIntervention(data);
+          toast.success('Intervenção criada com sucesso!');
+        }}
+        defaultBridgeId={id}
+      />
+
+      {/* Edit Intervention Dialog */}
+      {editingIntervention && (
+        <CreateInterventionDialog
+          open={!!editingIntervention}
+          onOpenChange={(open) => !open && setEditingIntervention(null)}
+          onSubmit={(data) => {
+            updateIntervention(editingIntervention.id, data);
+            setEditingIntervention(null);
+            toast.success('Intervenção atualizada com sucesso!');
+          }}
+          editData={editingIntervention}
+          defaultBridgeId={id}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteInterventionId} onOpenChange={(open) => !open && setDeleteInterventionId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir esta intervenção? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => {
+                if (deleteInterventionId) {
+                  deleteIntervention(deleteInterventionId);
+                  setDeleteInterventionId(null);
+                  toast.success('Intervenção excluída com sucesso!');
+                }
+              }} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
