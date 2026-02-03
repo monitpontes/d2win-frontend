@@ -37,18 +37,34 @@ interface ApiLatestResponse {
   devices: ApiDeviceTelemetry[];
 }
 
+// New structure for history response - each device has arrays of freq/accel readings
+interface ApiHistoryAccelReading {
+  ts: string;
+  value: number;
+  severity: string;
+  meta?: { device_id: string };
+}
+
+interface ApiHistoryFreqReading {
+  ts: string;
+  peaks: Array<{ f: number; mag: number }>;
+  severity: string;
+  status?: string;
+  meta?: { device_id: string };
+}
+
+interface ApiHistoryItem {
+  device_id: string;
+  accel: ApiHistoryAccelReading[] | null;
+  freq: ApiHistoryFreqReading[] | null;
+}
+
 interface ApiHistoryResponse {
   ok: boolean;
   count: number;
   limit: number;
   bridge_id: string;
-  items: Array<{
-    device_id: string;
-    ts: string;
-    value?: number;
-    peaks?: Array<{ f: number; mag: number }>;
-    meta?: { axis?: string; stream?: string };
-  }>;
+  items: ApiHistoryItem[];
 }
 
 function mapApiDeviceToTelemetry(device: ApiDeviceTelemetry, bridgeId: string): TelemetryData {
@@ -104,13 +120,35 @@ export async function getHistoryByBridge(
     return [];
   }
   
-  return data.items.map(item => ({
-    deviceId: item.device_id,
-    bridgeId: bridgeId,
-    timestamp: item.ts,
-    frequency: item.peaks?.[0]?.f,
-    acceleration: item.value !== undefined ? { x: 0, y: 0, z: item.value } : undefined,
-  }));
+  // Process each device and extract latest value from freq/accel arrays
+  return data.items.map(item => {
+    const hasFreq = item.freq && item.freq.length > 0;
+    const hasAccel = item.accel && item.accel.length > 0;
+    
+    // Get the latest reading from each array
+    const lastFreq = hasFreq ? item.freq![item.freq!.length - 1] : null;
+    const lastAccel = hasAccel ? item.accel![item.accel!.length - 1] : null;
+    
+    // Determine which reading is more recent to use as timestamp
+    const freqTime = lastFreq ? new Date(lastFreq.ts).getTime() : 0;
+    const accelTime = lastAccel ? new Date(lastAccel.ts).getTime() : 0;
+    const isFrequencyLatest = freqTime >= accelTime;
+    
+    // Determine modoOperacao based on which has more recent data
+    const modoOperacao = isFrequencyLatest && hasFreq ? 'frequencia' : 'aceleracao';
+    
+    return {
+      deviceId: item.device_id,
+      bridgeId: bridgeId,
+      timestamp: isFrequencyLatest ? lastFreq?.ts : lastAccel?.ts,
+      modoOperacao,
+      frequency: lastFreq?.peaks?.[0]?.f,
+      acceleration: lastAccel?.value !== undefined 
+        ? { x: 0, y: 0, z: lastAccel.value } 
+        : undefined,
+      status: isFrequencyLatest ? lastFreq?.severity : lastAccel?.severity,
+    };
+  });
 }
 
 export const telemetryService = {
