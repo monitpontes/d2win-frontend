@@ -1,96 +1,155 @@
 
-# Plano de Integração com a D2WIN API
+# Plano: Alinhar Integração de API com Dashboard de Referência
 
-## Status: Fases 1-6 Implementadas ✅
+## Resumo
 
----
-
-## Resumo da Implementação
-
-### Arquivos Criados
-
-1. **`src/lib/api/client.ts`** - Cliente HTTP base com Axios e interceptors JWT
-2. **`src/lib/api/auth.ts`** - Serviços de autenticação (login, getCurrentUser)
-3. **`src/lib/api/companies.ts`** - CRUD de empresas
-4. **`src/lib/api/bridges.ts`** - CRUD de pontes
-5. **`src/lib/api/users.ts`** - CRUD de usuários
-6. **`src/lib/api/devices.ts`** - CRUD de dispositivos
-7. **`src/lib/api/telemetry.ts`** - Serviços de telemetria
-8. **`src/lib/api/index.ts`** - Exportações centralizadas
-
-9. **`src/hooks/useCompanies.ts`** - Hook React Query para empresas
-10. **`src/hooks/useBridges.ts`** - Hook React Query para pontes
-11. **`src/hooks/useUsers.ts`** - Hook React Query para usuários
-12. **`src/hooks/useDevices.ts`** - Hook React Query para dispositivos
-
-### Arquivos Modificados
-
-1. **`src/contexts/AuthContext.tsx`** - Usa API real quando `VITE_API_URL` está configurada
-2. **`src/components/admin/AdminSidebar.tsx`** - Conectado à API de empresas
-3. **`src/components/layout/CompanySidebar.tsx`** - Conectado à API de empresas
-4. **`src/pages/Admin.tsx`** - Conectado às APIs de pontes, usuários e dispositivos
-5. **`src/pages/Dashboard.tsx`** - Conectado à API de pontes
-6. **`src/pages/BridgeDetail.tsx`** - Conectado às APIs de ponte e dispositivos
+Analisei o código do seu dashboard antigo (`d2win-dashboard`) e identifiquei diferenças importantes na forma como a API é consultada. A estrutura atual está correta, mas precisa de alguns ajustes para garantir compatibilidade total com a API do backend.
 
 ---
 
-## Funcionalidades Conectadas
+## O que encontrei no código de referência
 
-| Módulo | Status | Descrição |
-|--------|--------|-----------|
-| Autenticação | ✅ | Login via `/auth/login`, validação via `/auth/me` |
-| Empresas | ✅ | Listar, criar, editar, excluir |
-| Pontes | ✅ | Listar por empresa, visualizar detalhes |
-| Usuários | ✅ | Listar por empresa, criar, editar, excluir |
-| Dispositivos | ✅ | Listar por empresa/ponte |
-| Telemetria | ⏳ | Serviços criados, falta integrar nos gráficos |
+O dashboard antigo usa um cliente de API com as seguintes características:
 
----
+1. **Endpoints corretos**:
+   - `/companies` - listagem de empresas
+   - `/bridges?company_id=xxx` - pontes filtradas por empresa
+   - `/devices-crud?company_id=xxx` - dispositivos
+   - `/users?company_id=xxx` - usuários
+   - `/auth/login` e `/auth/me` - autenticação
 
-## Comportamento do Sistema
+2. **Estrutura dos dados da API**:
+   - Empresas: `{ _id, name, createdAt, updatedAt, isActive, abbr }`
+   - Pontes: `{ _id, name, company_id, location, description, isActive, code }`
+   - Dispositivos: `{ _id, device_id, company_id, bridge_id, isActive, last_seen, meta, params_current }`
+   - Usuários: `{ _id, name, email, role, isActive, company_id }`
 
-### Com API Configurada (`VITE_API_URL` definida):
-- Login usa endpoint real `/auth/login`
-- Dados são buscados da API
-- CRUD opera via API
-
-### Sem API Configurada:
-- Fallback para autenticação mock (senha: 0000)
-- Estados de "sem dados" são exibidos
-- Sistema continua funcional para demonstração
+3. **Token**: Armazenado como `d2win_token` no localStorage
 
 ---
 
-## Próximos Passos (Fase 7)
+## Diagnóstico do Problema Atual
 
-1. **Integrar telemetria nos gráficos** - Usar `telemetryService.getHistoryByBridge()` no `DataAnalysisSection`
-2. **Conectar eventos/alertas** - Criar endpoint e hook para alertas
-3. **Integrar câmeras** - Quando disponível na API
-4. **Dashboard operacional** - Conectar KPIs com dados reais
+A integração está quase correta, mas há algumas discrepâncias:
+
+| Aspecto | Dashboard Atual | Dashboard Referência | Status |
+|---------|-----------------|----------------------|--------|
+| Token key | `d2win_token` | `d2win_token` | OK |
+| Endpoint empresas | `/companies` | `/companies` | OK |
+| Endpoint pontes | `/bridges` | `/bridges` | OK |
+| Endpoint dispositivos | `/devices-crud` | `/devices-crud` | OK |
+| Mapeamento `_id` -> `id` | Implementado | - | OK |
+| Tratamento de arrays vazios | Funciona | - | OK |
+
+**Problema identificado**: A API está funcionando (login foi bem sucedido), mas provavelmente **não há dados cadastrados** na API para empresas e pontes.
 
 ---
 
-## Configuração Necessária
+## Plano de Verificação e Ajustes
 
-```bash
-# Adicionar no ambiente ou secrets do Lovable
-VITE_API_URL=https://sua-api-url.vercel.app
+### Fase 1: Adicionar Logs de Debug (Temporário)
+
+Adicionar console.log nas chamadas de API para verificar:
+- URL sendo chamada
+- Resposta recebida
+- Erros detalhados
+
+**Arquivos a modificar**:
+- `src/lib/api/companies.ts`
+- `src/lib/api/bridges.ts`
+
+### Fase 2: Melhorar Tratamento de Erros
+
+Adicionar tratamento mais robusto para:
+- Erros de rede
+- Respostas vazias
+- Timeout de API (cold start do Render)
+
+**Arquivos a modificar**:
+- `src/lib/api/client.ts`
+- `src/hooks/useCompanies.ts`
+- `src/hooks/useBridges.ts`
+
+### Fase 3: Criar Ferramenta de Teste de API
+
+Adicionar botão temporário para testar conexão com a API diretamente:
+- Testar GET `/companies`
+- Testar GET `/bridges`
+- Mostrar resposta raw no console
+
+---
+
+## Seção Técnica
+
+### Alterações no `src/lib/api/client.ts`
+
+```typescript
+// Adicionar timeout maior para cold start do Render
+export const api = axios.create({
+  baseURL: API_URL,
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 30000, // 30 segundos para cold start
+});
+
+// Melhorar log de debug
+api.interceptors.response.use(
+  (response) => {
+    console.log(`[API] ${response.config.method?.toUpperCase()} ${response.config.url}`, response.data);
+    return response;
+  },
+  (error) => {
+    console.error(`[API Error] ${error.config?.url}`, error.response?.data || error.message);
+    // ... resto do tratamento
+  }
+);
 ```
 
-A API precisa:
-- Estar online e acessível
-- Ter CORS configurado para aceitar requisições do frontend
-- Usar autenticação JWT compatível
+### Alterações em `src/lib/api/companies.ts`
+
+```typescript
+export async function getCompanies(): Promise<Company[]> {
+  try {
+    const response = await api.get<ApiCompany[]>('/companies');
+    console.log('[Companies] Raw response:', response.data);
+    return response.data.map(mapApiCompanyToCompany);
+  } catch (error) {
+    console.error('[Companies] Error fetching:', error);
+    throw error;
+  }
+}
+```
+
+### Alterações em `src/hooks/useCompanies.ts`
+
+```typescript
+const { 
+  data: companies = [], 
+  isLoading, 
+  error,
+  refetch 
+} = useQuery({
+  queryKey: ['companies'],
+  queryFn: companiesService.getCompanies,
+  staleTime: 5 * 60 * 1000,
+  retry: 2, // Tentar 2 vezes em caso de falha
+  retryDelay: 1000, // Esperar 1s entre tentativas
+});
+```
 
 ---
 
-## Mapeamento de Tipos (API ↔ Frontend)
+## Próximos Passos Após Implementação
 
-| Frontend | API |
-|----------|-----|
-| id | _id |
-| companyId | company_id |
-| bridgeId | bridge_id |
-| status (active/inactive) | isActive (boolean) |
+1. **Fazer login novamente** e observar os logs no console (F12)
+2. **Verificar se as chamadas estão sendo feitas** para `/companies` e `/bridges`
+3. **Analisar a resposta** - se retorna `[]` vazio, o problema é que não há dados na API
+4. **Se necessário**, cadastrar uma empresa de teste via painel Admin
 
-Os serviços em `src/lib/api/` fazem a conversão automaticamente.
+---
+
+## Estimativa
+
+- **Fase 1**: 5 minutos
+- **Fase 2**: 5 minutos
+- **Fase 3**: 10 minutos (opcional)
+- **Total**: ~15-20 minutos
