@@ -1,150 +1,245 @@
 
+# Plano: Sistema Completo de Gerenciamento de Pontes com Filtros Operacionais, Integração de Dados e Mapa KMZ
 
-# Plano: Corrigir Loop de Redirecionamento e Problemas de Login
+## Visão Geral
 
-## Problemas Identificados
-
-### 1. AuthProvider Duplicado
-O `AuthProvider` está sendo renderizado **duas vezes**:
-- Uma vez em `src/main.tsx` (linha 7-9)
-- Outra vez em `src/App.tsx` (linha 19)
-
-Isso causa conflitos de contexto e erros intermitentes.
-
-### 2. Loop de Redirecionamento por Erro 401
-Quando um usuário tenta fazer login e a API retorna um erro 401 (token inválido ou expirado), o interceptor do axios:
-1. Limpa todos os tokens
-2. Redireciona para `/login` via `window.location.href`
-
-Mas este comportamento está acontecendo **também durante o processo de login**, causando loop infinito.
-
-### 3. Verificação de API Configurada
-A função `isApiConfigured()` verifica apenas `VITE_API_URL`, mas como agora temos um fallback hardcoded, ela sempre retorna `false` quando a variável de ambiente não está definida - mesmo com o fallback funcionando.
+Este plano implementa um sistema robusto onde cada ponte gerencia seus próprios usuários, sensores e arquivos KMZ, com persistência de dados no banco de dados MongoDB através da API existente. O mapa interativo será integrado às pontes permitindo filtragem por clique.
 
 ---
 
-## Solução
+## Funcionalidades a Implementar
 
-### Fase 1: Remover AuthProvider Duplicado
+### 1. Filtros Operacionais nas Configurações da Ponte
+Adicionar todos os campos de filtros operacionais ao diálogo de detalhes da ponte (BridgeDetailsDialog), incluindo:
+- Concessão
+- Rodovia
+- Tipologia (Ponte, Viaduto, Passarela)
+- Material estrutural
+- Tipo de vão
+- Tipo de viga
+- Status operacional
+- Criticidade operacional
+- KM
+- Arquivo KMZ da ponte
 
-Manter apenas UM `AuthProvider` - no `App.tsx` (que é o padrão correto).
+### 2. Edição de Ponte com Persistência no Banco
+Quando alterar campos da ponte no painel Admin:
+- Atualizar o registro existente no banco (PUT/PATCH)
+- Não criar registros duplicados
+- Usar o hook `useBridges().updateBridge`
 
-**Arquivo:** `src/main.tsx`
-```typescript
-import { createRoot } from "react-dom/client";
-import App from "./App.tsx";
-import "./index.css";
+### 3. Usuários e Sensores por Ponte
+- Listar usuários vinculados à ponte
+- Listar sensores da ponte
+- Permitir editar parâmetros dos sensores com persistência
+- Usar os hooks `useDevices().updateDevice`
 
-createRoot(document.getElementById("root")!).render(<App />);
-```
+### 4. Arquivo KMZ por Ponte
+- Cada ponte pode ter seu próprio arquivo KMZ
+- Campo `kmzFile` na interface Bridge
+- Upload de arquivo KMZ nas configurações
+- Visualização no mapa
 
-### Fase 2: Corrigir Verificação de API Configurada
-
-Atualizar a função para também considerar o fallback.
-
-**Arquivo:** `src/contexts/AuthContext.tsx`
-```typescript
-// Verifica se a API está disponível (sempre true agora com fallback)
-const isApiConfigured = (): boolean => {
-  // Com fallback hardcoded, API está sempre configurada
-  return true;
-};
-```
-
-### Fase 3: Evitar Loop de Redirecionamento no 401
-
-Modificar o interceptor para **não redirecionar durante o login**.
-
-**Arquivo:** `src/lib/api/client.ts`
-```typescript
-api.interceptors.response.use(
-  (response) => {
-    // ... código existente
-  },
-  (error) => {
-    console.error(`[API Error]...`, { ... });
-    
-    // Evitar loop: não redirecionar se já está na página de login
-    // ou se é uma requisição de login/auth
-    const isAuthRequest = error.config?.url?.includes('/auth/');
-    const isLoginPage = window.location.pathname === '/login';
-    
-    if (error.response?.status === 401 && !isAuthRequest && !isLoginPage) {
-      localStorage.removeItem('d2win_token');
-      sessionStorage.removeItem('d2win_token');
-      localStorage.removeItem('d2win_user');
-      sessionStorage.removeItem('d2win_session');
-      window.location.href = '/login';
-    }
-    
-    return Promise.reject(error);
-  }
-);
-```
+### 5. Mapa com Filtragem por Clique
+- Ao clicar em um ponto no mapa, filtrar a ponte correspondente
+- Mostrar pontes com coordenadas no mapa
+- Carregar KMZ individual de cada ponte
 
 ---
 
-## Arquivos a Modificar
+## Arquivos a Modificar/Criar
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `src/main.tsx` | Remover AuthProvider duplicado |
-| `src/contexts/AuthContext.tsx` | Atualizar `isApiConfigured()` para retornar `true` |
-| `src/lib/api/client.ts` | Evitar loop de 401 durante autenticação |
+| Arquivo | Ação | Descrição |
+|---------|------|-----------|
+| `src/types/index.ts` | Modificar | Adicionar campo `kmzFile` à interface Bridge |
+| `src/lib/api/bridges.ts` | Modificar | Mapear campo `kmz_file` da API |
+| `src/components/admin/BridgeDetailsDialog.tsx` | Modificar | Adicionar campos de filtros operacionais e edição |
+| `src/components/admin/DeviceParametersDialog.tsx` | Modificar | Integrar com API para persistência |
+| `src/components/dashboard/BridgesMapLeaflet.tsx` | Modificar | Adicionar marcadores de pontes e callback de filtro |
+| `src/pages/Dashboard.tsx` | Modificar | Receber callback do mapa para filtrar pontes |
+| `src/hooks/useBridges.ts` | Verificar | Já tem `updateBridge` implementado |
+| `src/hooks/useDevices.ts` | Verificar | Já tem `updateDevice` implementado |
 
 ---
 
 ## Seção Técnica Detalhada
 
-### Por que os logins do banco não estão funcionando?
+### 1. Atualizar Interface Bridge
 
-Olhando a imagem que você enviou, os usuários no MongoDB são:
-- `admin@d2win.com` (company_id: null)
-- `jmeneses682@gmail.com`
-- `testeuser@viewer.com`
-- `viewermotiva@d2win.com`
-
-O problema é que:
-1. O login provavelmente está funcionando na API
-2. Mas o interceptor de 401 está limpando a sessão imediatamente após
-
-### Fluxo atual (com bug):
-```
-1. Usuário faz login
-2. API retorna token + user
-3. Token é salvo no storage
-4. Navigate para /dashboard
-5. initAuth() é chamado
-6. /auth/me é chamado
-7. Se houver qualquer erro -> limpa storage e redireciona para /login
-8. Loop infinito
+```typescript
+// src/types/index.ts
+export interface Bridge {
+  // ... campos existentes
+  kmzFile?: string; // URL do arquivo KMZ da ponte
+}
 ```
 
-### Fluxo corrigido:
+### 2. Atualizar API de Bridges
+
+```typescript
+// src/lib/api/bridges.ts
+export interface ApiBridge {
+  // ... campos existentes
+  kmz_file?: string;
+}
+
+export function mapApiBridgeToBridge(apiBridge: ApiBridge): Bridge {
+  return {
+    // ... mapeamento existente
+    kmzFile: apiBridge.kmz_file,
+  };
+}
 ```
-1. Usuário faz login
-2. API retorna token + user
-3. Token é salvo no storage
-4. Navigate para /dashboard
-5. initAuth() é chamado
-6. /auth/me é chamado (com token válido)
-7. Se sucesso -> mantém sessão
-8. Se erro 401 (e não é request de auth) -> redireciona
+
+### 3. Novo BridgeDetailsDialog Completo
+
+```typescript
+// Estrutura do componente com abas
+- Aba "Informações": dados básicos, filtros operacionais
+- Aba "Sensores": lista de sensores da ponte, edição de parâmetros
+- Aba "Usuários": lista de usuários com acesso
+- Aba "Mapa": upload/visualização KMZ
 ```
+
+Campos editáveis:
+- `name`, `location`, `concession`, `rodovia`
+- `typology`, `beamType`, `spanType`, `material`
+- `structuralStatus`, `operationalCriticality`
+- `km`, `length`, `width`, `capacity`
+- `coordinates` (lat/lng)
+- Upload de arquivo KMZ
+
+### 4. Persistência nos Sensores
+
+```typescript
+// DeviceParametersDialog - handleSaveParams
+const handleSaveParams = async () => {
+  if (!device) return;
+  
+  await updateDevice({
+    id: device.id,
+    data: {
+      acquisitionInterval: parseInt(params.acquisitionInterval),
+      // ... outros campos
+    }
+  });
+  
+  toast.success('Parâmetros salvos!');
+  onOpenChange(false);
+};
+```
+
+### 5. Mapa com Pontes e Filtro
+
+```typescript
+// BridgesMapLeaflet - props atualizadas
+interface BridgesMapProps {
+  compact?: boolean;
+  bridges?: Bridge[];
+  onBridgeClick?: (bridgeId: string) => void;
+}
+
+// Adicionar marcadores de pontes
+bridges.forEach(bridge => {
+  if (bridge.coordinates) {
+    const marker = L.marker([bridge.coordinates.lat, bridge.coordinates.lng], {
+      icon: createBridgeIcon(bridge.structuralStatus)
+    });
+    
+    marker.on('click', () => {
+      onBridgeClick?.(bridge.id);
+    });
+    
+    marker.bindPopup(`<strong>${bridge.name}</strong>`);
+    bridgeMarkersLayer.addLayer(marker);
+  }
+});
+```
+
+### 6. Dashboard com Callback de Filtro
+
+```typescript
+// Dashboard.tsx
+const handleBridgeClickOnMap = (bridgeId: string) => {
+  setFilters(prev => ({
+    ...prev,
+    search: bridgeId // ou filtrar por ID específico
+  }));
+};
+
+<BridgesMap 
+  compact 
+  bridges={allBridges}
+  onBridgeClick={handleBridgeClickOnMap}
+/>
+```
+
+---
+
+## Fluxo de Atualização de Dados
+
+```text
+1. Usuário edita campo da ponte
+          |
+          v
+2. Formulário valida dados
+          |
+          v
+3. Chama updateBridge({ id, data })
+          |
+          v
+4. Hook faz PUT /bridges/:id
+          |
+          v
+5. API atualiza registro no MongoDB
+          |
+          v
+6. React Query invalida cache
+          |
+          v
+7. UI atualiza automaticamente
+```
+
+---
+
+## Cores dos Marcadores no Mapa por Status
+
+| Status | Cor |
+|--------|-----|
+| operacional | Verde (#22c55e) |
+| atencao | Amarelo (#f59e0b) |
+| restricoes | Laranja (#f97316) |
+| critico | Vermelho (#ef4444) |
+| interdicao | Vermelho escuro (#b91c1c) |
+
+---
+
+## Upload de Arquivo KMZ
+
+Para armazenar o arquivo KMZ da ponte:
+1. Usar campo de URL (armazenamento externo)
+2. Ou fazer upload para um serviço de storage
+3. Salvar a URL no campo `kmzFile`
+
+O usuário pode fornecer uma URL direta ou, futuramente, integrar com um serviço de upload.
 
 ---
 
 ## Resultado Esperado
 
-Após implementação:
-1. Login com usuários do banco (`admin@d2win.com`, etc.) funcionará
-2. Não haverá mais loop de redirecionamento
-3. Dashboard carregará normalmente após login bem-sucedido
+Ao final da implementação:
+1. Cada ponte terá todos os filtros operacionais editáveis
+2. Alterações serão salvas no banco de dados (não cria duplicatas)
+3. Sensores da ponte serão listados e editáveis
+4. Usuários vinculados à ponte serão exibidos
+5. Cada ponte pode ter seu arquivo KMZ
+6. Clicar no mapa filtra a ponte correspondente
+7. Pontes com coordenadas aparecem no mapa com cores por status
 
 ---
 
 ## Estimativa
 
-- **Tempo:** ~10 minutos
-- **Arquivos:** 3
-
+- **Tempo:** ~45 minutos
+- **Arquivos:** 7-8 arquivos
+- **Complexidade:** Média-Alta
