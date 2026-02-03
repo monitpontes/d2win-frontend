@@ -8,7 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Activity, FileText, Camera, Settings, Calendar, MapPin, AlertTriangle, Wifi, WifiOff, Play, RefreshCw, FileUp, Download, Eye, Wrench, XCircle, CheckCircle, Clock, TriangleAlert, ExternalLink, FolderOpen, History, Video, Link as LinkIcon, Zap, Box } from 'lucide-react';
+import { ArrowLeft, Activity, FileText, Camera, Settings, Calendar, MapPin, AlertTriangle, Wifi, WifiOff, Play, RefreshCw, FileUp, Download, Eye, Wrench, XCircle, CheckCircle, Clock, TriangleAlert, ExternalLink, FolderOpen, History, Video, Link as LinkIcon, Zap, Box, Table as TableIcon } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { ComposedChart, ReferenceLine as ReferenceLineComposed } from 'recharts';
+import type { BridgeEvent } from '@/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
 import Bridge3D, { type Bridge3DSensor } from '@/components/bridge/Bridge3D';
 import DataAnalysisSection from '@/components/bridge/DataAnalysisSection';
@@ -21,6 +24,7 @@ export default function BridgeDetail() {
   const { hasRole } = useAuth();
   const [selectedTab, setSelectedTab] = useState('monitoring');
   const [selectedSensor3D, setSelectedSensor3D] = useState<Bridge3DSensor | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<BridgeEvent | null>(null);
 
   const bridge = useMemo(() => mockBridges.find((b) => b.id === id), [id]);
   const sensors = useMemo(() => getSensorsByBridge(id || ''), [id]);
@@ -588,7 +592,11 @@ export default function BridgeDetail() {
                         const sensor = sensors.find((s) => s.id === event.sensorId);
                         const severityConfig = getSeverityConfig(event.severity);
                         return (
-                          <TableRow key={event.id}>
+                          <TableRow 
+                            key={event.id} 
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => setSelectedEvent(event)}
+                          >
                             <TableCell className="text-sm">
                               {format(new Date(event.timestamp), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                             </TableCell>
@@ -614,8 +622,165 @@ export default function BridgeDetail() {
                     )}
                   </TableBody>
                 </Table>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Clique em um evento para ver detalhes
+                </p>
               </CardContent>
             </Card>
+
+            {/* Event Details Dialog */}
+            <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Detalhes do Evento Anômalo</DialogTitle>
+                </DialogHeader>
+                
+                {selectedEvent && (() => {
+                  const sensor = sensors.find((s) => s.id === selectedEvent.sensorId);
+                  const severityConfig = getSeverityConfig(selectedEvent.severity);
+                  
+                  // Generate 24h mock data
+                  const hourlyData = Array.from({ length: 24 }, (_, i) => ({
+                    time: `${String(i).padStart(2, '0')}:00`,
+                    value: i >= 11 && i <= 13 ? (i === 12 ? 10.7 : 0.5 + Math.random() * 0.3) : 0.1 + Math.random() * 0.2,
+                    isAnomaly: i === 12,
+                  }));
+                  
+                  return (
+                    <div className="space-y-4">
+                      {/* Event Summary */}
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="flex items-start justify-between">
+                            <div className="space-y-2">
+                              <h4 className="font-semibold">Resumo do Evento</h4>
+                              <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
+                                <p className="text-muted-foreground">Timestamp: <span className="text-foreground">{format(new Date(selectedEvent.timestamp), 'dd/MM/yyyy, HH:mm', { locale: ptBR })}</span></p>
+                                <p className="text-muted-foreground">Sensor: <span className="text-foreground">{sensor?.name || selectedEvent.sensorId}</span></p>
+                                <p className="text-muted-foreground">Tipo: <span className="text-foreground capitalize">{selectedEvent.type}</span></p>
+                                <p className="text-muted-foreground">Métrica: <span className="text-foreground">rmsAccelZ</span></p>
+                              </div>
+                              <p className="text-sm">
+                                Valor registrado: <span className="text-destructive font-bold">10.706 m/s²</span>
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Sensor {sensor?.name || 'accel1-Z'} registrou valores 8821% acima da média por aproximadamente 31 minutos. 
+                                Aceleração RMS elevada no eixo Z: 10.706 m/s² (limite: 10.5 m/s²)
+                              </p>
+                            </div>
+                            <Badge 
+                              variant={selectedEvent.severity === 'critical' || selectedEvent.severity === 'high' ? 'destructive' : 'secondary'}
+                            >
+                              {severityConfig.label}
+                            </Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Current Status */}
+                      <Card className="border-l-4 border-l-green-500">
+                        <CardContent className="pt-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="font-semibold text-green-600">Status Atual</h4>
+                              <p className="text-sm text-green-600 flex items-center gap-1">
+                                <CheckCircle className="h-4 w-4" />
+                                Valores retornaram à média normal
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-muted-foreground">Valor Atual</p>
+                              <p className="text-2xl font-bold text-green-600">0.122 m/s²</p>
+                              <p className="text-xs text-muted-foreground">Dentro da média</p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* 24h Chart */}
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="text-sm">Valores Registrados (24 horas)</CardTitle>
+                            <div className="flex border rounded-md overflow-hidden">
+                              <Button variant="default" size="sm" className="h-7 text-xs rounded-none">
+                                Gráfico
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-7 text-xs flex items-center gap-1 rounded-none">
+                                <TableIcon className="h-3 w-3" />
+                                Tabela
+                              </Button>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="h-48">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={hourlyData}>
+                                <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                                <XAxis dataKey="time" tick={{ fontSize: 9 }} />
+                                <YAxis domain={[0, 12]} tick={{ fontSize: 9 }} label={{ value: 'Aceleração (m/s²)', angle: -90, position: 'insideLeft', fontSize: 10 }} />
+                                <Tooltip />
+                                <ReferenceLine y={0.3} stroke="hsl(142, 76%, 36%)" strokeDasharray="5 5" />
+                                <Line 
+                                  type="monotone" 
+                                  dataKey="value" 
+                                  stroke="hsl(var(--primary))" 
+                                  strokeWidth={1.5} 
+                                  dot={(props: any) => {
+                                    const { cx, cy, payload } = props;
+                                    if (payload.isAnomaly) {
+                                      return (
+                                        <circle
+                                          key={`dot-${payload.time}`}
+                                          cx={cx}
+                                          cy={cy}
+                                          r={6}
+                                          fill="hsl(var(--destructive))"
+                                          stroke="white"
+                                          strokeWidth={2}
+                                        />
+                                      );
+                                    }
+                                    return null;
+                                  }}
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="mt-2 text-xs text-muted-foreground space-y-1">
+                            <p>• Ponto vermelho indica o momento exato da anomalia detectada</p>
+                            <p>• Linha verde tracejada representa o valor médio esperado</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Schedule Intervention */}
+                      <Card className="border-l-4 border-l-primary">
+                        <CardContent className="pt-4">
+                          <div className="flex items-start gap-3">
+                            <Calendar className="h-5 w-5 text-primary mt-0.5" />
+                            <div>
+                              <h4 className="font-semibold">Agendar Intervenção</h4>
+                              <p className="text-sm text-muted-foreground">Este evento requer verificação? Deseja agendar uma intervenção para inspeção?</p>
+                              <Button className="mt-3" size="sm">
+                                Avaliar Agendamento
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  );
+                })()}
+
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setSelectedEvent(null)}>
+                    Fechar
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* Specifications Tab */}
