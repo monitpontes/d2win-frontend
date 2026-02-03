@@ -58,27 +58,36 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
     }
 
     return latestData.map((telemetry, idx) => {
-      // Determine type based on data structure
-      // API: frequency = peaks[0].f from stream freq:z
-      // API: acceleration = value from axis z
-      const isFrequency = telemetry.frequency !== undefined;
-      const value = isFrequency 
-        ? telemetry.frequency! 
-        : telemetry.acceleration?.z || 0;
+      // Determine type based on modo_operacao field (not data presence)
+      const isFrequency = telemetry.modoOperacao === 'frequencia';
+      const isAcceleration = telemetry.modoOperacao === 'aceleracao';
+      
+      // Extract value based on mode - may be undefined if no data
+      let value: number | undefined;
+      if (isFrequency) {
+        value = telemetry.frequency;
+      } else if (isAcceleration) {
+        value = telemetry.acceleration?.z;
+      }
       
       const type: 'frequency' | 'acceleration' = isFrequency ? 'frequency' : 'acceleration';
       const status = getSensorStatus(value, type);
       const variation = calculateVariation(value, type);
 
+      // Format display value - show "-" if no data
+      const displayValue = value !== undefined && value !== null
+        ? `${value.toFixed(2)} ${isFrequency ? 'Hz' : 'm/s²'}`
+        : '-';
+
       return {
         sensorName: telemetry.deviceId || `Sensor ${idx + 1}`,
         axis: 'Z' as const,
         type: isFrequency ? 'Frequência' : 'Aceleração',
-        lastValue: isFrequency ? `${value.toFixed(2)} Hz` : `${value.toFixed(2)} m/s²`,
+        lastValue: displayValue,
         reference: getReferenceText(type),
         variation,
         status,
-        updatedAt: formatDateValue(telemetry.timestamp, 'dd/MM HH:mm'),
+        updatedAt: telemetry.timestamp ? formatDateValue(telemetry.timestamp, 'dd/MM HH:mm') : '-',
       };
     });
   }, [latestData]);
