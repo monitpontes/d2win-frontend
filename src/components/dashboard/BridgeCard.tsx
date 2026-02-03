@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import type { Bridge, Sensor, StructuralStatus } from '@/types';
+import type { Bridge, StructuralStatus } from '@/types';
 import { structuralStatusLabels } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -21,12 +21,21 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { MapPin, Clock, ArrowRight, AlertTriangle, TableIcon, LineChart } from 'lucide-react';
-import { formatDistanceToNow, format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { MapPin, Clock, ArrowRight, AlertTriangle, TableIcon, LineChart, Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { getSensorsByBridge } from '@/data/mockData';
-import { LineChart as RechartsLine, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { LineChart as RechartsLine, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine } from 'recharts';
+import { useTelemetry } from '@/hooks/useTelemetry';
+import { DEFAULT_THRESHOLDS } from '@/lib/constants/sensorThresholds';
+import { 
+  getSensorStatus, 
+  calculateVariation, 
+  formatVariation, 
+  getVariationColor, 
+  getStatusConfig,
+  getReferenceText
+} from '@/lib/utils/sensorStatus';
+import { formatDateValue } from '@/lib/utils/formatValue';
 
 interface BridgeCardProps {
   bridge: Bridge;
@@ -35,82 +44,84 @@ interface BridgeCardProps {
 type AxisFilter = 'all' | 'X' | 'Y' | 'Z';
 type ViewMode = 'table' | 'chart';
 
-// Generate mock sensor readings with axis data
-const generateSensorReadings = (bridgeId: string) => {
-  const sensors = getSensorsByBridge(bridgeId);
-  const axes: Array<'X' | 'Y' | 'Z'> = ['X', 'Y', 'Z'];
-  const readings: Array<{
-    sensorName: string;
-    axis: 'X' | 'Y' | 'Z';
-    type: 'Frequência' | 'Aceleração';
-    lastValue: string;
-    reference: string;
-    variation: number;
-    status: 'normal' | 'alert' | 'critical';
-    updatedAt: string;
-  }> = [];
-
-  // Generate readings for each sensor with different axes
-  for (let i = 1; i <= 5; i++) {
-    const sensor = sensors[i % sensors.length] || sensors[0];
-    axes.forEach((axis) => {
-      if (axis === 'Y' && Math.random() > 0.3) return; // Y axis less common for frequency
-      
-      const isFrequency = Math.random() > 0.3;
-      const baseValue = isFrequency ? 3.5 + Math.random() * 0.8 : 0.1 + Math.random() * 10;
-      const refMin = isFrequency ? 3.0 : 0.3;
-      const refMax = isFrequency ? 3.7 : 10.0;
-      const variation = ((baseValue - refMin) / refMin) * 100;
-      
-      let status: 'normal' | 'alert' | 'critical' = 'normal';
-      if (Math.abs(variation) > 20) status = 'critical';
-      else if (Math.abs(variation) > 10) status = 'alert';
-
-      readings.push({
-        sensorName: `Sensor 0${i}`,
-        axis,
-        type: isFrequency ? 'Frequência' : 'Aceleração',
-        lastValue: isFrequency ? `${baseValue.toFixed(2)} Hz` : `${baseValue.toFixed(2)} m/s²`,
-        reference: isFrequency ? `${refMin}-${refMax} Hz` : `< ${refMax} m/s²`,
-        variation: Math.round(variation * 10) / 10,
-        status,
-        updatedAt: format(new Date(Date.now() - Math.random() * 3600000), 'dd/MM, HH:mm'),
-      });
-    });
-  }
-
-  return readings.slice(0, 12); // Limit to 12 readings
-};
-
-// Generate chart data
-const generateChartData = (bridgeId: string) => {
-  const times = ['10:03', '10:18', '10:33', '10:48', '11:03'];
-  
-  return {
-    frequency: times.map(time => ({
-      time,
-      sensorX1: 3.4 + Math.random() * 0.3,
-      sensorZ1: 3.6 + Math.random() * 0.3,
-      sensorX2: 3.7 + Math.random() * 0.3,
-      sensorZ2: 3.5 + Math.random() * 0.3,
-      sensorX3: 4.0 + Math.random() * 0.3,
-      sensorZ3: 3.8 + Math.random() * 0.3,
-    })),
-    acceleration: times.map(time => ({
-      time,
-      sensorX: 9.5 + Math.random() * 1.5,
-      sensorY: 0.1 + Math.random() * 0.1,
-      sensorZ: 0.05 + Math.random() * 0.05,
-    })),
-  };
-};
-
 export function BridgeCard({ bridge }: BridgeCardProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [axisFilter, setAxisFilter] = useState<AxisFilter>('all');
 
-  const sensorReadings = useMemo(() => generateSensorReadings(bridge.id), [bridge.id]);
-  const chartData = useMemo(() => generateChartData(bridge.id), [bridge.id]);
+  // Fetch real telemetry data
+  const { latestData, isLoadingLatest } = useTelemetry(bridge.id);
+
+  // Transform telemetry data into sensor readings
+  const sensorReadings = useMemo(() => {
+    if (!latestData || latestData.length === 0) {
+      return [];
+    }
+
+    return latestData.map((telemetry, idx) => {
+      // Determine type based on data structure
+      // API: frequency = peaks[0].f from stream freq:z
+      // API: acceleration = value from axis z
+      const isFrequency = telemetry.frequency !== undefined;
+      const value = isFrequency 
+        ? telemetry.frequency! 
+        : telemetry.acceleration?.z || 0;
+      
+      const type: 'frequency' | 'acceleration' = isFrequency ? 'frequency' : 'acceleration';
+      const status = getSensorStatus(value, type);
+      const variation = calculateVariation(value, type);
+
+      return {
+        sensorName: telemetry.deviceId || `Sensor ${idx + 1}`,
+        axis: 'Z' as const,
+        type: isFrequency ? 'Frequência' : 'Aceleração',
+        lastValue: isFrequency ? `${value.toFixed(2)} Hz` : `${value.toFixed(2)} m/s²`,
+        reference: getReferenceText(type),
+        variation,
+        status,
+        updatedAt: formatDateValue(telemetry.timestamp, 'dd/MM HH:mm'),
+      };
+    });
+  }, [latestData]);
+
+  // Generate chart data from telemetry
+  const chartData = useMemo(() => {
+    if (!latestData || latestData.length === 0) {
+      // Fallback mock data if no telemetry
+      const times = ['10:03', '10:18', '10:33', '10:48', '11:03'];
+      return {
+        frequency: times.map(time => ({
+          time,
+          value: 3.5 + Math.random() * 0.3,
+        })),
+        acceleration: times.map(time => ({
+          time,
+          value: 9.5 + Math.random() * 0.5,
+        })),
+      };
+    }
+
+    // Use real data - take last 5 readings
+    const frequencyData = latestData
+      .filter(d => d.frequency !== undefined)
+      .slice(-5)
+      .map(d => ({
+        time: formatDateValue(d.timestamp, 'dd/MM HH:mm'),
+        value: d.frequency!,
+      }));
+
+    const accelerationData = latestData
+      .filter(d => d.acceleration?.z !== undefined)
+      .slice(-5)
+      .map(d => ({
+        time: formatDateValue(d.timestamp, 'dd/MM HH:mm'),
+        value: d.acceleration!.z,
+      }));
+
+    return {
+      frequency: frequencyData.length > 0 ? frequencyData : [{ time: '-', value: 0 }],
+      acceleration: accelerationData.length > 0 ? accelerationData : [{ time: '-', value: 0 }],
+    };
+  }, [latestData]);
 
   const filteredReadings = useMemo(() => {
     if (axisFilter === 'all') return sensorReadings;
@@ -118,10 +129,10 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
   }, [sensorReadings, axisFilter]);
 
   const alertCount = useMemo(() => 
-    sensorReadings.filter(r => r.status === 'alert' || r.status === 'critical').length
+    sensorReadings.filter(r => r.status === 'alert' || r.status === 'attention').length
   , [sensorReadings]);
 
-  const getStatusConfig = (status: Bridge['structuralStatus']) => {
+  const getBridgeStatusConfig = (status: Bridge['structuralStatus']) => {
     const configs: Record<StructuralStatus, { label: string; className: string }> = {
       operacional: { label: structuralStatusLabels.operacional, className: 'bg-success text-success-foreground' },
       atencao: { label: structuralStatusLabels.atencao, className: 'bg-warning text-warning-foreground' },
@@ -141,22 +152,13 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
     return configs[criticality];
   };
 
-  const statusConfig = getStatusConfig(bridge.structuralStatus);
+  const statusConfig = getBridgeStatusConfig(bridge.structuralStatus);
   const criticalityConfig = getCriticalityConfig(bridge.operationalCriticality);
 
-  const getVariationColor = (variation: number) => {
-    if (Math.abs(variation) > 20) return 'text-destructive';
-    if (Math.abs(variation) > 10) return 'text-warning';
-    return 'text-success';
-  };
-
-  const getStatusIndicator = (status: 'normal' | 'alert' | 'critical') => {
-    const colors = {
-      normal: 'bg-success',
-      alert: 'bg-warning',
-      critical: 'bg-destructive',
-    };
-    return <span className={cn('inline-block h-2.5 w-2.5 rounded-full', colors[status])} />;
+  // Status indicator using imported getStatusConfig
+  const renderStatusIndicator = (status: 'normal' | 'attention' | 'alert') => {
+    const config = getStatusConfig(status);
+    return <span className={cn('inline-block h-2.5 w-2.5 rounded-full', config.bgClass)} />;
   };
 
   return (
@@ -268,12 +270,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                     <TableRow key={idx} className="h-9">
                       <TableCell className="text-xs font-medium py-1">{reading.sensorName}</TableCell>
                       <TableCell className="text-xs py-1">
-                        <Badge variant="outline" className={cn(
-                          'text-[10px] px-1.5 py-0',
-                          reading.axis === 'X' && 'text-destructive border-destructive',
-                          reading.axis === 'Y' && 'text-warning border-warning',
-                          reading.axis === 'Z' && 'text-primary border-primary'
-                        )}>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-primary border-primary">
                           {reading.axis}
                         </Badge>
                       </TableCell>
@@ -281,9 +278,9 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                       <TableCell className="text-xs font-medium py-1">{reading.lastValue}</TableCell>
                       <TableCell className="text-xs text-muted-foreground py-1">{reading.reference}</TableCell>
                       <TableCell className={cn('text-xs font-medium py-1', getVariationColor(reading.variation))}>
-                        {reading.variation > 0 ? '+' : ''}{reading.variation}%
+                        {formatVariation(reading.variation)}
                       </TableCell>
-                      <TableCell className="py-1">{getStatusIndicator(reading.status)}</TableCell>
+                      <TableCell className="py-1">{renderStatusIndicator(reading.status)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground py-1">{reading.updatedAt}</TableCell>
                     </TableRow>
                   ))}
@@ -298,27 +295,25 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
             
             {/* Frequency Chart */}
             <div className="border rounded-md p-2">
-              <div className="text-xs font-medium mb-2">Frequência (Hz)</div>
+              <div className="text-xs font-medium mb-2">Frequência (Hz) - Eixo Z</div>
               <div className="h-[100px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsLine data={chartData.frequency}>
                     <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[3, 4.5]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <YAxis domain={[2, 8]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                     <Tooltip />
-                    {(axisFilter === 'all' || axisFilter === 'X') && (
-                      <>
-                        <Line type="monotone" dataKey="sensorX1" stroke="hsl(var(--destructive))" strokeWidth={1.5} dot={{ r: 2 }} />
-                        <Line type="monotone" dataKey="sensorX2" stroke="hsl(var(--destructive))" strokeWidth={1.5} dot={{ r: 2 }} />
-                        <Line type="monotone" dataKey="sensorX3" stroke="hsl(var(--destructive))" strokeWidth={1.5} dot={{ r: 2 }} />
-                      </>
-                    )}
-                    {(axisFilter === 'all' || axisFilter === 'Z') && (
-                      <>
-                        <Line type="monotone" dataKey="sensorZ1" stroke="hsl(var(--chart-3))" strokeWidth={1.5} strokeDasharray="4 2" dot={{ r: 2 }} />
-                        <Line type="monotone" dataKey="sensorZ2" stroke="hsl(var(--chart-3))" strokeWidth={1.5} strokeDasharray="4 2" dot={{ r: 2 }} />
-                        <Line type="monotone" dataKey="sensorZ3" stroke="hsl(var(--chart-3))" strokeWidth={1.5} strokeDasharray="4 2" dot={{ r: 2 }} />
-                      </>
-                    )}
+                    <ReferenceLine 
+                      y={DEFAULT_THRESHOLDS.frequency.reference} 
+                      stroke="hsl(var(--muted-foreground))" 
+                      strokeDasharray="4 2" 
+                      label={{ value: `Ref ${DEFAULT_THRESHOLDS.frequency.reference}`, fontSize: 8, fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <ReferenceLine 
+                      y={DEFAULT_THRESHOLDS.frequency.attention} 
+                      stroke="hsl(var(--warning))" 
+                      strokeDasharray="4 2"
+                    />
+                    <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={{ r: 2 }} name="Freq Z" />
                   </RechartsLine>
                 </ResponsiveContainer>
               </div>
@@ -326,22 +321,25 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
 
             {/* Acceleration Chart */}
             <div className="border rounded-md p-2">
-              <div className="text-xs font-medium mb-2">Aceleração (m/s²)</div>
+              <div className="text-xs font-medium mb-2">Aceleração (m/s²) - Eixo Z</div>
               <div className="h-[80px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsLine data={chartData.acceleration}>
                     <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <YAxis domain={[0, 25]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                     <Tooltip />
-                    {(axisFilter === 'all' || axisFilter === 'X') && (
-                      <Line type="monotone" dataKey="sensorX" stroke="hsl(var(--chart-2))" strokeWidth={1.5} dot={{ r: 2 }} />
-                    )}
-                    {(axisFilter === 'all' || axisFilter === 'Y') && (
-                      <Line type="monotone" dataKey="sensorY" stroke="hsl(var(--warning))" strokeWidth={1.5} dot={{ r: 2 }} />
-                    )}
-                    {(axisFilter === 'all' || axisFilter === 'Z') && (
-                      <Line type="monotone" dataKey="sensorZ" stroke="hsl(var(--success))" strokeWidth={1.5} dot={{ r: 2 }} />
-                    )}
+                    <ReferenceLine 
+                      y={DEFAULT_THRESHOLDS.acceleration.normal} 
+                      stroke="hsl(var(--warning))" 
+                      strokeDasharray="4 2" 
+                      label={{ value: `Atenção ${DEFAULT_THRESHOLDS.acceleration.normal}`, fontSize: 8, fill: 'hsl(var(--warning))' }}
+                    />
+                    <ReferenceLine 
+                      y={DEFAULT_THRESHOLDS.acceleration.alert} 
+                      stroke="hsl(var(--destructive))" 
+                      strokeDasharray="4 2"
+                    />
+                    <Line type="monotone" dataKey="value" stroke="hsl(var(--chart-2))" strokeWidth={1.5} dot={{ r: 2 }} name="Acel Z" />
                   </RechartsLine>
                 </ResponsiveContainer>
               </div>

@@ -17,6 +17,8 @@ import { useInterventions, type NewIntervention } from '@/hooks/useInterventions
 import { useTelemetry } from '@/hooks/useTelemetry';
 import { useBridge } from '@/hooks/useBridges';
 import { formatValue } from '@/lib/utils/formatValue';
+import { DEFAULT_THRESHOLDS } from '@/lib/constants/sensorThresholds';
+import { getSensorStatus, getStatusConfig, calculateVariation, formatVariation } from '@/lib/utils/sensorStatus';
 
 interface DataAnalysisSectionProps {
   bridgeId: string;
@@ -88,16 +90,29 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
       const frequencies = latestData.filter(d => d.frequency).map(d => d.frequency!);
       const accelerations = latestData.filter(d => d.acceleration?.z).map(d => d.acceleration!.z);
       
+      const freqAvg = frequencies.length > 0 ? frequencies.reduce((a, b) => a + b, 0) / frequencies.length : 0;
+      const accelAvg = accelerations.length > 0 ? accelerations.reduce((a, b) => a + b, 0) / accelerations.length : 0;
+      const accelMax = accelerations.length > 0 ? Math.max(...accelerations) : 0;
+      
+      // Calculate variation from reference
+      const accelVariation = calculateVariation(accelMax, 'acceleration');
+      const freqStatus = getSensorStatus(freqAvg, 'frequency');
+      const accelStatus = getSensorStatus(accelMax, 'acceleration');
+      
       return {
-        frequencyAvg: frequencies.length > 0 ? (frequencies.reduce((a, b) => a + b, 0) / frequencies.length).toFixed(2) : '-',
+        frequencyAvg: frequencies.length > 0 ? freqAvg.toFixed(2) : '-',
         frequencyMin: frequencies.length > 0 ? Math.min(...frequencies).toFixed(2) : '-',
         frequencyMax: frequencies.length > 0 ? Math.max(...frequencies).toFixed(2) : '-',
         frequencyPeak: frequencies.length > 0 ? Math.max(...frequencies).toFixed(2) : '-',
-        accelerationAvg: accelerations.length > 0 ? (accelerations.reduce((a, b) => a + b, 0) / accelerations.length).toFixed(2) : '-',
+        frequencyStatus: freqStatus,
+        frequencyReference: `< ${DEFAULT_THRESHOLDS.frequency.normal} Hz`,
+        accelerationAvg: accelerations.length > 0 ? accelAvg.toFixed(2) : '-',
         accelerationMin: accelerations.length > 0 ? Math.min(...accelerations).toFixed(2) : '-',
-        accelerationMax: accelerations.length > 0 ? Math.max(...accelerations).toFixed(2) : '-',
-        accelerationPeak: accelerations.length > 0 ? Math.max(...accelerations).toFixed(2) : '-',
-        vibrationLevel: '-',
+        accelerationMax: accelerations.length > 0 ? accelMax.toFixed(2) : '-',
+        accelerationPeak: accelerations.length > 0 ? accelMax.toFixed(2) : '-',
+        accelerationStatus: accelStatus,
+        accelerationReference: `< ${DEFAULT_THRESHOLDS.acceleration.normal} m/s²`,
+        vibrationLevel: accelVariation !== 0 ? Math.abs(accelVariation).toFixed(1) : '-',
         structuralStatus: bridge?.structuralStatus || '-',
       };
     }
@@ -111,6 +126,10 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
       accelerationPeak: '10.92',
       frequencyMax: '4.15',
       frequencyPeak: '4.18',
+      frequencyStatus: 'normal' as const,
+      frequencyReference: `< ${DEFAULT_THRESHOLDS.frequency.normal} Hz`,
+      accelerationStatus: 'attention' as const,
+      accelerationReference: `< ${DEFAULT_THRESHOLDS.acceleration.normal} m/s²`,
       vibrationLevel: '21.8',
       structuralStatus: 'Crítico',
     };
@@ -248,8 +267,8 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
           <YAxis domain={[9.2, 11.2]} tick={{ fontSize: 9 }} label={{ value: `${metricFilter} Eixo ${accelAxisFilter} (m/s²)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <ReferenceLine y={10.8} stroke="hsl(220, 10%, 60%)" strokeDasharray="8 4" label={{ value: 'Limite Crítico', fontSize: 9, fill: 'hsl(220, 10%, 50%)' }} />
-          <ReferenceLine y={10.5} stroke="hsl(0, 84%, 60%)" strokeDasharray="5 5" label={{ value: 'Limite Alerta', fontSize: 9, fill: 'hsl(0, 84%, 60%)' }} />
+          <ReferenceLine y={DEFAULT_THRESHOLDS.acceleration.alert} stroke="hsl(220, 10%, 60%)" strokeDasharray="8 4" label={{ value: `Limite Alerta (${DEFAULT_THRESHOLDS.acceleration.alert})`, fontSize: 9, fill: 'hsl(220, 10%, 50%)' }} />
+          <ReferenceLine y={DEFAULT_THRESHOLDS.acceleration.normal} stroke="hsl(var(--warning))" strokeDasharray="5 5" label={{ value: `Limite Atenção (${DEFAULT_THRESHOLDS.acceleration.normal})`, fontSize: 9, fill: 'hsl(var(--warning))' }} />
           
           {(showAll || accelAxisFilter === 'X') && (
             <Line type="monotone" dataKey="valueX" stroke="hsl(220, 70%, 50%)" strokeWidth={1.5} dot={false} name="Eixo X" />
@@ -301,7 +320,7 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
           <YAxis domain={[3.0, 4.5]} tick={{ fontSize: 9 }} label={{ value: `domFreq1 Eixo ${freqAxisFilter} (Hz)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <ReferenceLine y={3.7} stroke="hsl(220, 10%, 60%)" strokeDasharray="5 5" label={{ value: 'Referência', fontSize: 9 }} />
+          <ReferenceLine y={DEFAULT_THRESHOLDS.frequency.reference} stroke="hsl(220, 10%, 60%)" strokeDasharray="5 5" label={{ value: `Referência (${DEFAULT_THRESHOLDS.frequency.reference} Hz)`, fontSize: 9 }} />
           
           {showAll ? (
             <>
