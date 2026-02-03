@@ -59,6 +59,7 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
   const [fullscreenChart, setFullscreenChart] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<AnomalyEvent | null>(null);
   const [isInterventionDialogOpen, setIsInterventionDialogOpen] = useState(false);
+  const [showScheduleConfirm, setShowScheduleConfirm] = useState(false);
   
   const { addIntervention } = useInterventions();
   const bridge = mockBridges.find(b => b.id === bridgeId);
@@ -903,7 +904,7 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
                 </CardContent>
               </Card>
 
-              {/* 24h Chart */}
+              {/* 24h Chart or Table */}
               <Card>
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
@@ -930,44 +931,75 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-48">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={hourlyData}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
-                        <XAxis dataKey="time" tick={{ fontSize: 9 }} />
-                        <YAxis domain={[0, 12]} tick={{ fontSize: 9 }} label={{ value: 'Aceleração (m/s²)', angle: -90, position: 'insideLeft', fontSize: 10 }} />
-                        <Tooltip />
-                        <ReferenceLine y={0.3} stroke="hsl(142, 76%, 36%)" strokeDasharray="5 5" />
-                        <Line 
-                          type="monotone" 
-                          dataKey="value" 
-                          stroke="hsl(var(--primary))" 
-                          strokeWidth={1.5} 
-                          dot={(props: any) => {
-                            const { cx, cy, payload } = props;
-                            if (payload.isAnomaly) {
-                              return (
-                                <circle
-                                  key={`dot-${payload.time}`}
-                                  cx={cx}
-                                  cy={cy}
-                                  r={6}
-                                  fill="hsl(var(--destructive))"
-                                  stroke="white"
-                                  strokeWidth={2}
-                                />
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="mt-2 text-xs text-muted-foreground space-y-1">
-                    <p>• Ponto vermelho indica o momento exato da anomalia detectada</p>
-                    <p>• Linha verde tracejada representa o valor médio esperado</p>
-                  </div>
+                  {viewMode === 'chart' ? (
+                    <>
+                      <div className="h-48">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={hourlyData}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                            <XAxis dataKey="time" tick={{ fontSize: 9 }} />
+                            <YAxis domain={[0, 12]} tick={{ fontSize: 9 }} label={{ value: 'Aceleração (m/s²)', angle: -90, position: 'insideLeft', fontSize: 10 }} />
+                            <Tooltip />
+                            <ReferenceLine y={0.3} stroke="hsl(142, 76%, 36%)" strokeDasharray="5 5" />
+                            <Line 
+                              type="monotone" 
+                              dataKey="value" 
+                              stroke="hsl(var(--primary))" 
+                              strokeWidth={1.5} 
+                              dot={(props: any) => {
+                                const { cx, cy, payload } = props;
+                                if (payload.isAnomaly) {
+                                  return (
+                                    <circle
+                                      key={`dot-${payload.time}`}
+                                      cx={cx}
+                                      cy={cy}
+                                      r={6}
+                                      fill="hsl(var(--destructive))"
+                                      stroke="white"
+                                      strokeWidth={2}
+                                    />
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="mt-2 text-xs text-muted-foreground space-y-1">
+                        <p>• Ponto vermelho indica o momento exato da anomalia detectada</p>
+                        <p>• Linha verde tracejada representa o valor médio esperado</p>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="max-h-48 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-background">
+                          <tr className="border-b">
+                            <th className="text-left py-2 px-2 font-medium">Hora</th>
+                            <th className="text-right py-2 px-2 font-medium">Valor (m/s²)</th>
+                            <th className="text-center py-2 px-2 font-medium">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {hourlyData.map((row: any, idx: number) => (
+                            <tr key={idx} className={cn("border-b", row.isAnomaly && "bg-destructive/10")}>
+                              <td className="py-1.5 px-2">{row.time}</td>
+                              <td className={cn("text-right py-1.5 px-2 font-mono", row.isAnomaly && "text-destructive font-bold")}>{row.value.toFixed(3)}</td>
+                              <td className="text-center py-1.5 px-2">
+                                {row.isAnomaly ? (
+                                  <Badge variant="destructive" className="text-xs">Anomalia</Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="text-xs">Normal</Badge>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -976,19 +1008,42 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
                 <CardContent className="pt-4">
                   <div className="flex items-start gap-3">
                     <Calendar className="h-5 w-5 text-primary mt-0.5" />
-                    <div>
+                    <div className="flex-1">
                       <h4 className="font-semibold">Agendar Intervenção</h4>
                       <p className="text-sm text-muted-foreground">Este evento requer verificação? Deseja agendar uma intervenção para inspeção?</p>
-                      <Button 
-                        className="mt-3" 
-                        size="sm"
-                        onClick={() => {
-                          setSelectedEvent(null);
-                          setIsInterventionDialogOpen(true);
-                        }}
-                      >
-                        Agendar Intervenção
-                      </Button>
+                      
+                      {!showScheduleConfirm ? (
+                        <Button 
+                          className="mt-3" 
+                          size="sm"
+                          onClick={() => setShowScheduleConfirm(true)}
+                        >
+                          Avaliar Agendamento
+                        </Button>
+                      ) : (
+                        <div className="mt-3 p-3 bg-muted/50 rounded-lg border">
+                          <p className="text-sm font-medium mb-3">Deseja criar uma inspeção para este evento?</p>
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm"
+                              onClick={() => {
+                                setShowScheduleConfirm(false);
+                                setSelectedEvent(null);
+                                setIsInterventionDialogOpen(true);
+                              }}
+                            >
+                              Sim, agendar
+                            </Button>
+                            <Button 
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowScheduleConfirm(false)}
+                            >
+                              Não
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>
