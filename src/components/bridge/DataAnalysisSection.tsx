@@ -16,7 +16,7 @@ import { CreateInterventionDialog } from '@/components/interventions/CreateInter
 import { useInterventions, type NewIntervention } from '@/hooks/useInterventions';
 import { useTelemetry } from '@/hooks/useTelemetry';
 import { useBridge } from '@/hooks/useBridges';
-import { formatValue } from '@/lib/utils/formatValue';
+import { formatValue, formatDateValue } from '@/lib/utils/formatValue';
 import { DEFAULT_THRESHOLDS } from '@/lib/constants/sensorThresholds';
 import { getSensorStatus, getStatusConfig, calculateVariation, formatVariation } from '@/lib/utils/sensorStatus';
 
@@ -67,7 +67,7 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
   
   const { addIntervention } = useInterventions();
   const { bridge } = useBridge(bridgeId);
-  const { historyData, latestData, isLoading: isTelemetryLoading } = useTelemetry(bridgeId);
+  const { historyData, latestData, timeSeriesData, isLoading: isTelemetryLoading, isConnected, lastUpdate } = useTelemetry(bridgeId);
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
 
   // Mock anomaly event
@@ -135,35 +135,81 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
     };
   }, [latestData, bridge]);
 
-  // Mock time series data with X, Y, Z axes for acceleration (9.5-11 m/s²)
+  // Real time series data for acceleration (eixo Z) from API + WebSocket
   const timeSeriesAcceleration = useMemo(() => {
-    return Array.from({ length: 30 }, (_, i) => ({
-      date: `${String(i + 1).padStart(2, '0')}/01`,
-      valueX: 9.5 + Math.random() * 0.8 + (i === 15 ? 0.9 : 0),
-      valueY: 9.6 + Math.random() * 0.7 + (i === 15 ? 0.8 : 0),
-      valueZ: 9.7 + Math.random() * 0.9 + (i === 15 ? 1.0 : 0),
-      anomalyX: i === 15 ? 10.4 : null,
-      anomalyY: i === 15 ? 10.4 : null,
-      anomalyZ: i === 15 ? 10.7 : null,
-    }));
-  }, []);
+    if (!timeSeriesData || timeSeriesData.length === 0) {
+      // Fallback mock only if no data
+      return Array.from({ length: 30 }, (_, i) => ({
+        date: `${String(i + 1).padStart(2, '0')}/01`,
+        valueX: 9.5 + Math.random() * 0.8,
+        valueY: 9.6 + Math.random() * 0.7,
+        valueZ: 9.7 + Math.random() * 0.9,
+        anomalyX: null,
+        anomalyY: null,
+        anomalyZ: null,
+      }));
+    }
 
-  // Mock time series data with X, Z axes for frequency (3.20-4.20 Hz)
+    // Use real acceleration data
+    return timeSeriesData
+      .filter(d => d.type === 'acceleration')
+      .slice(-50)
+      .map(d => ({
+        date: formatDateValue(d.timestamp, 'HH:mm:ss'),
+        valueX: d.value, // API only provides Z, use same for display
+        valueY: d.value,
+        valueZ: d.value,
+        anomalyX: null,
+        anomalyY: null,
+        anomalyZ: d.severity === 'critical' ? d.value : null,
+        device: d.deviceId,
+      }));
+  }, [timeSeriesData]);
+
+  // Real time series data for frequency from API + WebSocket
   const timeSeriesFrequency = useMemo(() => {
-    return Array.from({ length: 30 }, (_, i) => ({
+    if (!timeSeriesData || timeSeriesData.length === 0) {
+      // Fallback mock only if no data
+      return Array.from({ length: 30 }, (_, i) => ({
+        date: `${String(i + 1).padStart(2, '0')}/01`,
+        s1X: 3.5 + Math.random() * 0.5,
+        s1Z: 3.6 + Math.random() * 0.4,
+        s2X: 3.4 + Math.random() * 0.6,
+        s2Z: 3.5 + Math.random() * 0.5,
+        s3X: 3.3 + Math.random() * 0.5,
+        s3Z: 3.4 + Math.random() * 0.6,
+        s4X: 3.6 + Math.random() * 0.4,
+        s4Z: 3.7 + Math.random() * 0.5,
+        referenceX: 3.7,
+        referenceZ: 3.7,
+      }));
+    }
+
+    // Group frequency data by timestamp for chart
+    const freqData = timeSeriesData.filter(d => d.type === 'frequency').slice(-100);
+    
+    // Build chart data with sensor columns
+    const byTimestamp = new Map<string, Record<string, number>>();
+    freqData.forEach(d => {
+      const time = formatDateValue(d.timestamp, 'HH:mm:ss');
+      if (!byTimestamp.has(time)) {
+        byTimestamp.set(time, { date: time } as any);
+      }
+      const row = byTimestamp.get(time)!;
+      // Map deviceId to sensor columns (s1Z, s2Z, etc.)
+      const sensorNum = d.deviceId.replace(/\D/g, '').slice(-1) || '1';
+      row[`s${sensorNum}Z`] = d.value;
+      row[`s${sensorNum}X`] = d.value;
+      row['referenceZ'] = DEFAULT_THRESHOLDS.frequency.reference;
+      row['referenceX'] = DEFAULT_THRESHOLDS.frequency.reference;
+    });
+
+    const result = Array.from(byTimestamp.values());
+    return result.length > 0 ? result : Array.from({ length: 30 }, (_, i) => ({
       date: `${String(i + 1).padStart(2, '0')}/01`,
-      s1X: 3.5 + Math.random() * 0.5,
-      s1Z: 3.6 + Math.random() * 0.4,
-      s2X: 3.4 + Math.random() * 0.6,
-      s2Z: 3.5 + Math.random() * 0.5,
-      s3X: 3.3 + Math.random() * 0.5,
-      s3Z: 3.4 + Math.random() * 0.6,
-      s4X: 3.6 + Math.random() * 0.4,
-      s4Z: 3.7 + Math.random() * 0.5,
-      referenceX: 3.7,
-      referenceZ: 3.7,
+      s1Z: 3.6, referenceZ: 3.7,
     }));
-  }, []);
+  }, [timeSeriesData]);
 
   // 24-hour data for anomaly modal
   const hourlyData = useMemo(() => {

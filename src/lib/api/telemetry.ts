@@ -151,8 +151,70 @@ export async function getHistoryByBridge(
   });
 }
 
+// Time series point for charts (expanded from freq/accel arrays)
+export interface TelemetryTimeSeriesPoint {
+  deviceId: string;
+  bridgeId: string;
+  timestamp: string;
+  type: 'frequency' | 'acceleration';
+  value: number;
+  severity?: string;
+}
+
+// Expand freq[] and accel[] arrays into time series points for charts
+// Uses limit: 100 by default to avoid excessive data
+export async function getHistoryTimeSeries(
+  bridgeId: string,
+  params?: TelemetryHistoryParams
+): Promise<TelemetryTimeSeriesPoint[]> {
+  const queryParams = { limit: 100, ...params };
+  const response = await api.get<ApiHistoryResponse>(
+    `/telemetry/history/bridge/${bridgeId}`,
+    { params: queryParams }
+  );
+
+  const data = response.data;
+  if (!data?.items) return [];
+
+  const points: TelemetryTimeSeriesPoint[] = [];
+
+  data.items.forEach(item => {
+    // Expand frequency array
+    item.freq?.forEach(reading => {
+      if (reading.peaks?.[0]?.f) {
+        points.push({
+          deviceId: item.device_id,
+          bridgeId,
+          timestamp: reading.ts,
+          type: 'frequency',
+          value: reading.peaks[0].f,
+          severity: reading.severity,
+        });
+      }
+    });
+
+    // Expand acceleration array (Z axis)
+    item.accel?.forEach(reading => {
+      points.push({
+        deviceId: item.device_id,
+        bridgeId,
+        timestamp: reading.ts,
+        type: 'acceleration',
+        value: reading.value,
+        severity: reading.severity,
+      });
+    });
+  });
+
+  // Sort by timestamp
+  return points.sort((a, b) =>
+    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+}
+
 export const telemetryService = {
   getLatestByCompany,
   getLatestByBridge,
   getHistoryByBridge,
+  getHistoryTimeSeries,
 };

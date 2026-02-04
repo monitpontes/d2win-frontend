@@ -56,13 +56,23 @@ export function formatDateValue(
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
     
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
     switch (formatStr) {
       case 'dd/MM/yyyy':
         return `${day}/${month}/${year}`;
       case 'dd/MM/yyyy HH:mm':
         return `${day}/${month}/${year} ${hours}:${minutes}`;
+      case 'dd/MM/yyyy HH:mm:ss':
+        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
       case 'dd/MM HH:mm':
         return `${day}/${month} ${hours}:${minutes}`;
+      case 'dd/MM HH:mm:ss':
+        return `${day}/${month} ${hours}:${minutes}:${seconds}`;
+      case 'HH:mm':
+        return `${hours}:${minutes}`;
+      case 'HH:mm:ss':
+        return `${hours}:${minutes}:${seconds}`;
       default:
         return `${day}/${month}/${year}`;
     }
