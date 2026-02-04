@@ -1,261 +1,539 @@
 
-# Plano: Buscar Valores Reais de Telemetria do Endpoint History
 
-## Problema Identificado
+# Plano: Implementar WebSocket para Atualização em Tempo Real
 
-O endpoint `/telemetry/latest/bridge/{id}` retorna `accel: null` e `freq: null` para os devices. Porém, o endpoint `/telemetry/history/bridge/{id}` retorna os dados completos com estrutura diferente:
+## Situação Atual
 
-```json
-{
-  "items": [
-    {
-      "device_id": "Motiva_P1_S01",
-      "accel": [
-        { "ts": "...", "value": 9.836552, "severity": "normal" }
-      ],
-      "freq": [
-        { "ts": "...", "peaks": [{"f": 3.552246, "mag": 758.19}], "severity": "critical" }
-      ]
-    }
-  ]
-}
+### Backend (d2win-api) - Já Pronto
+O backend já possui Socket.IO configurado e funcionando:
+
+```javascript
+// src/app.js - Backend
+const io = new SocketIOServer(httpServer, {
+  cors: { origin: "*", methods: ["GET", "POST"] },
+});
+
+globalThis.__io = io;
+
+io.on("connection", (socket) => {
+  socket.on("join_bridge", ({ bridge_id }) => {
+    socket.join(`bridge:${bridge_id}`);
+  });
+  
+  socket.on("join_company", ({ company_id }) => {
+    socket.join(`company:${company_id}`);
+  });
+});
 ```
+
+Quando um sensor envia dados, o backend emite via WebSocket:
+
+```javascript
+// ingestAccel.js e ingestFreq.js
+io.to(`bridge:${bridge_id}`).emit("telemetry", {
+  type: "accel" | "freq",
+  bridge_id: "...",
+  company_id: "...",
+  device_id: "...",
+  ts: "2026-01-15T10:30:00Z",
+  payload: {
+    // Para accel:
+    axis: "z",
+    value: 9.84,
+    severity: "normal"
+    
+    // Para freq:
+    peaks: [{ f: 3.55, mag: 758 }],
+    severity: "normal"
+  }
+});
+```
+
+### Frontend (Atual) - Precisa Atualizar
+O frontend usa apenas polling HTTP que não atualiza automaticamente:
+- `useTelemetry` faz 2 requisições HTTP (latest + history)
+- `historyQuery` não tem `refetchInterval`
+- Não há conexão WebSocket
 
 ---
 
 ## Solução
 
-Usar o endpoint `/telemetry/history/bridge/{id}` para obter os valores mais recentes de cada device, extraindo:
-- **Frequência**: `freq[freq.length-1].peaks[0].f` (última leitura, primeiro pico)
-- **Aceleração**: `accel[accel.length-1].value` (última leitura)
+Implementar cliente Socket.IO no frontend para receber dados em tempo real e fazer append nos gráficos automaticamente.
 
 ---
 
-## Arquivos a Modificar
+## Arquitetura
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `src/lib/api/telemetry.ts` | Atualizar mapeamento para usar estrutura do history endpoint |
-| `src/hooks/useTelemetry.ts` | Modificar para processar dados do history corretamente |
-| `src/components/dashboard/BridgeCard.tsx` | Usar historyData além de latestData |
-| `src/components/bridge/DataAnalysisSection.tsx` | Usar dados reais de historyData nos gráficos |
-| `src/pages/BridgeDetail.tsx` | Atualizar sensores 3D com dados reais |
+```text
+┌──────────────────────────────────────────────────────────────────────────┐
+│                              FRONTEND                                     │
+│                                                                          │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐      │
+│  │  SocketContext   │───>│  useTelemetry   │───>│  BridgeCard     │      │
+│  │  (conexão WS)    │    │  (dados + stream)│    │  BridgeDetail   │      │
+│  └────────┬────────┘    └─────────────────┘    │  DataAnalysis   │      │
+│           │                                      └─────────────────┘      │
+│           │ join_bridge                                                    │
+│           │ emit("telemetry")                                             │
+└───────────┼──────────────────────────────────────────────────────────────┘
+            │ WebSocket
+            ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         BACKEND (d2win-api)                              │
+│                                                                          │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐      │
+│  │  Socket.IO       │<───│  ingestAccel    │<───│  IoT Sensor     │      │
+│  │  Server          │    │  ingestFreq     │    │  (dispositivo)  │      │
+│  └─────────────────┘    └─────────────────┘    └─────────────────┘      │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Arquivos a Criar/Modificar
+
+| Arquivo | Operação | Descrição |
+|---------|----------|-----------|
+| `src/lib/socket.ts` | Criar | Cliente Socket.IO singleton |
+| `src/contexts/SocketContext.tsx` | Criar | Context para gerenciar conexão WS |
+| `src/hooks/useTelemetrySocket.ts` | Criar | Hook para receber dados em tempo real |
+| `src/hooks/useTelemetry.ts` | Modificar | Integrar com WebSocket |
+| `src/main.tsx` | Modificar | Adicionar SocketProvider |
+| `package.json` | Modificar | Adicionar `socket.io-client` |
 
 ---
 
 ## Seção Técnica
 
-### 1. Nova Interface para History Response
+### 1. Instalar socket.io-client
+
+```bash
+npm install socket.io-client
+```
+
+### 2. Criar Cliente Socket.IO
 
 ```typescript
-interface ApiHistoryItem {
-  device_id: string;
-  accel: Array<{
-    ts: string;
-    value: number;
-    severity: string;
-    meta?: { device_id: string };
-  }>;
-  freq: Array<{
-    ts: string;
-    peaks: Array<{ f: number; mag: number }>;
-    severity: string;
-    status?: string;
-    meta?: { device_id: string };
-  }>;
+// src/lib/socket.ts
+import { io, Socket } from "socket.io-client";
+
+const API_URL = import.meta.env.VITE_API_URL || "https://d2win-api.onrender.com";
+
+let socket: Socket | null = null;
+
+export function getSocket(): Socket {
+  if (!socket) {
+    socket = io(API_URL, {
+      autoConnect: false,
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+    });
+
+    socket.on("connect", () => {
+      console.log("[Socket] Connected:", socket?.id);
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("[Socket] Disconnected:", reason);
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("[Socket] Connection error:", error.message);
+    });
+  }
+  return socket;
 }
 
-interface ApiHistoryResponse {
-  ok: boolean;
-  count: number;
-  limit: number;
+export function connectSocket(): void {
+  const s = getSocket();
+  if (!s.connected) {
+    s.connect();
+  }
+}
+
+export function disconnectSocket(): void {
+  if (socket?.connected) {
+    socket.disconnect();
+  }
+}
+```
+
+### 3. Criar SocketContext
+
+```typescript
+// src/contexts/SocketContext.tsx
+import { createContext, useContext, useEffect, useRef, ReactNode } from "react";
+import { Socket } from "socket.io-client";
+import { getSocket, connectSocket, disconnectSocket } from "@/lib/socket";
+
+interface SocketContextValue {
+  socket: Socket | null;
+  isConnected: boolean;
+  joinBridge: (bridgeId: string) => void;
+  leaveBridge: (bridgeId: string) => void;
+  joinCompany: (companyId: string) => void;
+  leaveCompany: (companyId: string) => void;
+}
+
+const SocketContext = createContext<SocketContextValue | null>(null);
+
+export function SocketProvider({ children }: { children: ReactNode }) {
+  const socketRef = useRef<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    socketRef.current = getSocket();
+    
+    const onConnect = () => setIsConnected(true);
+    const onDisconnect = () => setIsConnected(false);
+
+    socketRef.current.on("connect", onConnect);
+    socketRef.current.on("disconnect", onDisconnect);
+
+    connectSocket();
+
+    return () => {
+      socketRef.current?.off("connect", onConnect);
+      socketRef.current?.off("disconnect", onDisconnect);
+      disconnectSocket();
+    };
+  }, []);
+
+  const joinBridge = (bridgeId: string) => {
+    socketRef.current?.emit("join_bridge", { bridge_id: bridgeId });
+    console.log("[Socket] Joined bridge:", bridgeId);
+  };
+
+  const leaveBridge = (bridgeId: string) => {
+    socketRef.current?.emit("leave_bridge", { bridge_id: bridgeId });
+  };
+
+  const joinCompany = (companyId: string) => {
+    socketRef.current?.emit("join_company", { company_id: companyId });
+  };
+
+  const leaveCompany = (companyId: string) => {
+    socketRef.current?.emit("leave_company", { company_id: companyId });
+  };
+
+  return (
+    <SocketContext.Provider value={{
+      socket: socketRef.current,
+      isConnected,
+      joinBridge,
+      leaveBridge,
+      joinCompany,
+      leaveCompany,
+    }}>
+      {children}
+    </SocketContext.Provider>
+  );
+}
+
+export function useSocket() {
+  const context = useContext(SocketContext);
+  if (!context) {
+    throw new Error("useSocket must be used within SocketProvider");
+  }
+  return context;
+}
+```
+
+### 4. Criar Hook useTelemetrySocket
+
+```typescript
+// src/hooks/useTelemetrySocket.ts
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useSocket } from "@/contexts/SocketContext";
+import type { TelemetryData } from "@/lib/api";
+
+interface TelemetryEvent {
+  type: "accel" | "freq";
   bridge_id: string;
-  items: ApiHistoryItem[];
+  company_id: string;
+  device_id: string;
+  ts: string;
+  payload: {
+    axis?: string;
+    value?: number;
+    peaks?: Array<{ f: number; mag: number }>;
+    severity: string;
+  };
 }
-```
 
-### 2. Atualizar getHistoryByBridge
+export function useTelemetrySocket(bridgeId?: string) {
+  const { socket, isConnected, joinBridge, leaveBridge } = useSocket();
+  const [realtimeData, setRealtimeData] = useState<TelemetryData[]>([]);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const joinedRef = useRef<string | null>(null);
 
-A função atual mapeia incorretamente. Nova implementação:
+  // Join/leave bridge room
+  useEffect(() => {
+    if (!bridgeId || !isConnected) return;
 
-```typescript
-export async function getHistoryByBridge(
-  bridgeId: string,
-  params?: TelemetryHistoryParams
-): Promise<TelemetryData[]> {
-  const response = await api.get<ApiHistoryResponse>(`/telemetry/history/bridge/${bridgeId}`, { params });
-  const data = response.data;
-  
-  if (!data?.items) return [];
-  
-  // Processar cada device e extrair último valor de freq/accel
-  return data.items.map(item => {
-    // Determinar modo de operação baseado em qual array tem dados recentes
-    const hasRecentFreq = item.freq && item.freq.length > 0;
-    const hasRecentAccel = item.accel && item.accel.length > 0;
-    
-    // Pegar última leitura de cada tipo
-    const lastFreq = hasRecentFreq ? item.freq[item.freq.length - 1] : null;
-    const lastAccel = hasRecentAccel ? item.accel[item.accel.length - 1] : null;
-    
-    // Determinar qual é o mais recente para usar como "último valor"
-    const freqTime = lastFreq ? new Date(lastFreq.ts).getTime() : 0;
-    const accelTime = lastAccel ? new Date(lastAccel.ts).getTime() : 0;
-    const isFrequencyMode = freqTime > accelTime;
-    
-    return {
-      deviceId: item.device_id,
-      bridgeId: bridgeId,
-      timestamp: isFrequencyMode ? lastFreq?.ts : lastAccel?.ts,
-      modoOperacao: isFrequencyMode ? 'frequencia' : 'aceleracao',
-      frequency: lastFreq?.peaks?.[0]?.f,
-      acceleration: lastAccel?.value !== undefined 
-        ? { x: 0, y: 0, z: lastAccel.value } 
-        : undefined,
-      status: isFrequencyMode ? lastFreq?.severity : lastAccel?.severity,
-    };
-  });
-}
-```
-
-### 3. Nova Função para Pegar Último Valor por Device
-
-```typescript
-export function getLatestFromHistory(items: ApiHistoryItem[]): TelemetryData[] {
-  return items.map(item => {
-    // Pegar última leitura de freq e accel
-    const lastFreq = item.freq?.length > 0 ? item.freq[item.freq.length - 1] : null;
-    const lastAccel = item.accel?.length > 0 ? item.accel[item.accel.length - 1] : null;
-    
-    // Determinar qual é mais recente
-    const freqTs = lastFreq ? new Date(lastFreq.ts).getTime() : 0;
-    const accelTs = lastAccel ? new Date(lastAccel.ts).getTime() : 0;
-    
-    const isFrequencyLatest = freqTs > accelTs;
-    
-    return {
-      deviceId: item.device_id,
-      timestamp: isFrequencyLatest ? lastFreq?.ts : lastAccel?.ts,
-      modoOperacao: isFrequencyLatest ? 'frequencia' : 'aceleracao',
-      frequency: lastFreq?.peaks?.[0]?.f,
-      acceleration: lastAccel ? { x: 0, y: 0, z: lastAccel.value } : undefined,
-      status: isFrequencyLatest ? lastFreq?.severity : lastAccel?.severity,
-    };
-  });
-}
-```
-
-### 4. Atualizar BridgeCard para Usar History
-
-```typescript
-// Em vez de usar latestData (que retorna null)
-// Usar historyData que contém os valores reais
-
-const { historyData, isLoading } = useTelemetry(bridge.id);
-
-const sensorReadings = useMemo(() => {
-  if (!historyData || historyData.length === 0) return [];
-  
-  return historyData.map((telemetry, idx) => {
-    const isFrequency = telemetry.modoOperacao === 'frequencia';
-    const value = isFrequency ? telemetry.frequency : telemetry.acceleration?.z;
-    
-    // ... resto do código existente
-  });
-}, [historyData]);
-```
-
-### 5. Combinar Latest (para modo_operacao) com History (para valores)
-
-A solução mais robusta é:
-1. Usar `/telemetry/latest` para obter `modo_operacao` atual de cada device
-2. Usar `/telemetry/history` para obter os valores mais recentes
-
-```typescript
-export function useTelemetry(bridgeId?: string) {
-  // ... queries existentes ...
-  
-  // Combinar dados: modo_operacao do latest + valores do history
-  const combinedData = useMemo(() => {
-    if (!latestQuery.data?.length || !historyQuery.data?.length) {
-      return historyQuery.data || [];
+    // Leave previous bridge if different
+    if (joinedRef.current && joinedRef.current !== bridgeId) {
+      leaveBridge(joinedRef.current);
     }
-    
-    const modeByDevice = new Map(
-      latestQuery.data.map(d => [d.deviceId, d.modoOperacao])
-    );
-    
-    return historyQuery.data.map(h => ({
-      ...h,
-      modoOperacao: modeByDevice.get(h.deviceId) || h.modoOperacao,
-    }));
-  }, [latestQuery.data, historyQuery.data]);
-  
+
+    joinBridge(bridgeId);
+    joinedRef.current = bridgeId;
+
+    return () => {
+      if (joinedRef.current) {
+        leaveBridge(joinedRef.current);
+        joinedRef.current = null;
+      }
+    };
+  }, [bridgeId, isConnected, joinBridge, leaveBridge]);
+
+  // Listen for telemetry events
+  useEffect(() => {
+    if (!socket || !bridgeId) return;
+
+    const handleTelemetry = (event: TelemetryEvent) => {
+      console.log("[Telemetry] Received:", event);
+
+      // Map event to TelemetryData format
+      const mapped: TelemetryData = {
+        deviceId: event.device_id,
+        bridgeId: event.bridge_id,
+        timestamp: event.ts,
+        modoOperacao: event.type === "freq" ? "frequencia" : "aceleracao",
+        status: event.payload.severity,
+        frequency: event.type === "freq" && event.payload.peaks?.[0]
+          ? event.payload.peaks[0].f
+          : undefined,
+        acceleration: event.type === "accel" && event.payload.value !== undefined
+          ? { x: 0, y: 0, z: event.payload.value }
+          : undefined,
+      };
+
+      setRealtimeData((prev) => {
+        // Find existing device or append
+        const idx = prev.findIndex((d) => d.deviceId === mapped.deviceId);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = mapped;
+          return updated;
+        }
+        return [...prev, mapped];
+      });
+
+      setLastUpdate(new Date());
+    };
+
+    socket.on("telemetry", handleTelemetry);
+
+    return () => {
+      socket.off("telemetry", handleTelemetry);
+    };
+  }, [socket, bridgeId]);
+
+  // Clear realtime data when bridge changes
+  useEffect(() => {
+    setRealtimeData([]);
+    setLastUpdate(null);
+  }, [bridgeId]);
+
   return {
-    latestData: combinedData,
-    // ...
+    realtimeData,
+    lastUpdate,
+    isConnected,
   };
 }
 ```
 
----
+### 5. Atualizar useTelemetry
 
-## Estrutura de Dados do History
+```typescript
+// src/hooks/useTelemetry.ts
+import { useQuery } from "@tanstack/react-query";
+import { useMemo, useEffect } from "react";
+import { telemetryService, type TelemetryData } from "@/lib/api";
+import { useTelemetrySocket } from "./useTelemetrySocket";
 
-Cada item no array `items`:
+export function useTelemetry(bridgeId?: string) {
+  // Socket para dados em tempo real
+  const { realtimeData, lastUpdate, isConnected } = useTelemetrySocket(bridgeId);
 
-| Campo | Tipo | Descrição |
-|-------|------|-----------|
-| `device_id` | string | ID do dispositivo |
-| `accel` | array | Lista de leituras de aceleração |
-| `accel[n].value` | number | Valor da aceleração em m/s² |
-| `accel[n].ts` | string | Timestamp da leitura |
-| `accel[n].severity` | string | "normal", "warning", "critical" |
-| `freq` | array | Lista de leituras de frequência |
-| `freq[n].peaks` | array | Picos de frequência detectados |
-| `freq[n].peaks[0].f` | number | Frequência principal em Hz |
-| `freq[n].ts` | string | Timestamp da leitura |
-| `freq[n].severity` | string | Status do alerta |
+  // HTTP para dados iniciais (modo_operacao)
+  const latestQuery = useQuery({
+    queryKey: ["telemetry", "latest", bridgeId],
+    queryFn: () => telemetryService.getLatestByBridge(bridgeId!),
+    enabled: !!bridgeId,
+    staleTime: 60000, // Menos frequente - socket atualiza
+  });
 
----
+  // HTTP para histórico inicial
+  const historyQuery = useQuery({
+    queryKey: ["telemetry", "history", bridgeId],
+    queryFn: () => telemetryService.getHistoryByBridge(bridgeId!, { limit: 500 }),
+    enabled: !!bridgeId,
+    staleTime: 60000,
+  });
 
-## Fluxo de Dados Corrigido
+  // Combinar: HTTP inicial + WebSocket realtime
+  const combinedData = useMemo(() => {
+    const httpData = historyQuery.data || [];
+    const latestModes = latestQuery.data || [];
 
-```text
-1. Buscar /telemetry/latest/bridge/{id}
-   → Obter modo_operacao de cada device
-   → accel/freq são null
+    // Criar mapa de modo_operacao do latest
+    const modeByDevice = new Map<string, string>();
+    latestModes.forEach((d) => {
+      if (d.modoOperacao) modeByDevice.set(d.deviceId, d.modoOperacao);
+    });
 
-2. Buscar /telemetry/history/bridge/{id}
-   → Obter arrays de leituras por device
-   → Extrair último valor de freq[].peaks[0].f ou accel[].value
+    // Merge HTTP data com modo correto
+    let merged = httpData.map((h) => ({
+      ...h,
+      modoOperacao: modeByDevice.get(h.deviceId) || h.modoOperacao,
+    }));
 
-3. Combinar dados:
-   → modo_operacao do latest
-   → valores do history
+    // Sobrescrever com dados realtime (mais recentes)
+    realtimeData.forEach((rt) => {
+      const idx = merged.findIndex((m) => m.deviceId === rt.deviceId);
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...rt };
+      } else {
+        merged.push(rt);
+      }
+    });
 
-4. Exibir na UI:
-   → Tipo correto (Frequência/Aceleração)
-   → Valor real (3.55 Hz, 9.84 m/s²)
-   → Timestamp da última leitura
+    return merged;
+  }, [latestQuery.data, historyQuery.data, realtimeData]);
+
+  return {
+    latestData: combinedData,
+    historyData: historyQuery.data || [],
+    realtimeData,
+    isLoadingLatest: latestQuery.isLoading,
+    isLoadingHistory: historyQuery.isLoading,
+    isLoading: latestQuery.isLoading || historyQuery.isLoading,
+    isConnected,
+    lastUpdate,
+    refetchLatest: latestQuery.refetch,
+    refetchHistory: historyQuery.refetch,
+  };
+}
+```
+
+### 6. Atualizar main.tsx
+
+```typescript
+// src/main.tsx
+import { SocketProvider } from "@/contexts/SocketContext";
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <SocketProvider>
+          <App />
+        </SocketProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  </StrictMode>
+);
+```
+
+### 7. Adicionar Indicador de Conexão (Opcional)
+
+No `BridgeCard.tsx` ou `BridgeDetail.tsx`:
+
+```typescript
+const { isConnected, lastUpdate } = useTelemetry(bridge.id);
+
+// Mostrar status da conexão
+<div className="flex items-center gap-2">
+  <span className={cn(
+    "h-2 w-2 rounded-full",
+    isConnected ? "bg-green-500" : "bg-red-500"
+  )} />
+  <span className="text-xs text-muted-foreground">
+    {isConnected ? "Tempo real" : "Offline"}
+  </span>
+  {lastUpdate && (
+    <span className="text-xs text-muted-foreground">
+      Última: {format(lastUpdate, "HH:mm:ss")}
+    </span>
+  )}
+</div>
 ```
 
 ---
 
-## Resultado Esperado
+## Fluxo de Dados
 
-| Device | Modo | Último Freq | Último Accel | Exibição |
-|--------|------|-------------|--------------|----------|
-| S01 | frequencia | 3.55 Hz | 9.86 m/s² | `3.55 Hz` (mais recente) |
-| S02 | aceleracao | - | 9.84 m/s² | `9.84 m/s²` |
-| S03 | frequencia | 3.56 Hz | - | `3.56 Hz` |
-| S04 | frequencia | 3.55 Hz | - | `3.55 Hz` |
-| S05 | frequencia | 4.00 Hz | - | `4.00 Hz` |
+```text
+1. Página carrega
+   ├── useTelemetry busca dados iniciais via HTTP
+   └── SocketProvider conecta ao WebSocket
+
+2. Usuário acessa BridgeDetail
+   ├── useTelemetrySocket emite "join_bridge"
+   └── Backend adiciona cliente à sala "bridge:{id}"
+
+3. Sensor envia dados (IoT → Backend)
+   ├── ingestAccel/ingestFreq salva no MongoDB
+   └── Emite io.to("bridge:{id}").emit("telemetry", {...})
+
+4. Frontend recebe evento
+   ├── useTelemetrySocket atualiza realtimeData
+   ├── useTelemetry combina com dados existentes
+   └── Componentes re-renderizam com valor novo
+```
+
+---
+
+## Formato do Evento WebSocket
+
+```typescript
+// Evento recebido do backend
+interface TelemetryEvent {
+  type: "accel" | "freq";
+  bridge_id: string;
+  company_id: string;
+  device_id: string;
+  ts: string;
+  payload: {
+    // Para type === "accel":
+    axis: "x" | "y" | "z";
+    value: number;      // Ex: 9.84 m/s²
+    severity: "normal" | "warning" | "critical";
+
+    // Para type === "freq":
+    status: "atividade_detectada" | "sem_atividade";
+    peaks: Array<{ f: number; mag: number }>;  // Ex: [{ f: 3.55, mag: 758 }]
+    severity: "normal" | "warning" | "critical";
+  }
+}
+```
+
+---
+
+## Benefícios
+
+| Aspecto | Antes (Polling) | Depois (WebSocket) |
+|---------|-----------------|---------------------|
+| Latência | 30-60 segundos | Instantâneo (~50ms) |
+| Requisições HTTP | ~120/hora por cliente | 2 (apenas inicial) |
+| Custo servidor | Alto | Baixo |
+| Dados no gráfico | Estáticos | Append automático |
+| Experiência | Precisa refresh | Tempo real |
 
 ---
 
 ## Estimativa
 
-- **Tempo:** ~30 minutos
-- **Arquivos:** 4-5 arquivos
+- **Tempo:** ~45 minutos
+- **Arquivos novos:** 3
+- **Arquivos modificados:** 3
+- **Dependência:** socket.io-client
 - **Complexidade:** Média
+
