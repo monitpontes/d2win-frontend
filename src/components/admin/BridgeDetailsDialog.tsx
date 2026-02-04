@@ -104,6 +104,7 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
     updateBridge({
       id: bridge.id,
       data: {
+        company_id: bridge.companyId,
         name: formData.name,
         location: formData.location,
         concession: formData.concession,
