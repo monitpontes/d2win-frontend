@@ -1,106 +1,187 @@
 
-# Plano: Corrigir Exibição de Valores e Atualização em Tempo Real
 
-## Problemas Identificados
+# Plano: Edição de Ponte Funcional e Status Real dos Dispositivos
 
-### Problema 1: WebSocket não extrai magnitude e segundo pico
-O `useTelemetrySocket.ts` só extrai `peaks[0].f` (frequência do primeiro pico), mas ignora:
-- `peaks[0].mag` (magnitude do pico 1)
-- `peaks[1].f` (frequência do pico 2)
-- `peaks[1].mag` (magnitude do pico 2)
+## Resumo das Alterações
 
-**Prova nos logs do console:**
-```json
-{
-  "type": "freq",
-  "device_id": "Motiva_P1_S03",
-  "payload": {
-    "peaks": [
-      { "f": 3.527832, "mag": 359.7332792 },  // ← magnitude1 ignorada!
-      { "f": 3.564453, "mag": 315.9170741 }   // ← pico 2 inteiro ignorado!
-    ]
-  }
+O usuário quer:
+1. Editar informações da ponte no diálogo (já funciona, mas precisa validar)
+2. Status estrutural NÃO é editável (remover o select)
+3. Dispositivos mostrem status reais da telemetria (não "Offline" fixo)
+4. Corrigir "Object]" na coluna Ponte dos dispositivos
+5. Remover abas "Sensores" e "Usuários" do diálogo (já existem na aba de admin)
+6. Upload de KMZ deve salvar no banco e aparecer no mapa
+
+---
+
+## Problema 1: "Object]" na coluna Ponte
+
+Na tabela de dispositivos (Admin.tsx linha 518):
+```typescript
+<TableCell>{bridge?.name || (device.bridgeId ? String(device.bridgeId).slice(-8) : 'N/A')}</TableCell>
+```
+
+O `device.bridgeId` está vindo como objeto ao invés de string. Isso pode ocorrer se a API retornar um objeto populado. Precisamos garantir que seja sempre tratado como string.
+
+**Solução**: Ajustar o mapeamento para extrair o ID corretamente e garantir fallback robusto.
+
+---
+
+## Problema 2: Status Fixo "Offline"
+
+A tabela de dispositivos usa `device.status` que vem do banco de dados (cadastro), não da telemetria em tempo real. Para mostrar status reais:
+
+**Solução**: Cruzar dados dos dispositivos com dados de telemetria por empresa usando `useTelemetryByCompany`.
+
+---
+
+## Problema 3: Remover Abas Desnecessárias do Diálogo
+
+Atualmente o BridgeDetailsDialog tem 4 abas:
+- Informações ✓ (manter)
+- Sensores ✗ (remover - já existe em Dispositivos)
+- Usuários ✗ (remover - já existe em Usuários)
+- Mapa/KMZ ✓ (manter)
+
+**Solução**: Alterar para grid de 2 colunas.
+
+---
+
+## Problema 4: Status Estrutural Não Editável
+
+O campo "Status Estrutural" atualmente pode ser editado via Select. O usuário quer que seja apenas exibido (somente leitura).
+
+**Solução**: Substituir o Select por um Badge de exibição.
+
+---
+
+## Problema 5: KMZ Salvar no Banco
+
+Atualmente o campo KMZ aceita URL e salva via `handleSave`. A API já suporta `kmz_file`. Precisa apenas garantir que o campo seja salvo e que o mapa leia essa propriedade.
+
+**Status**: Já funciona. O `handleSave` envia `kmz_file: formData.kmzFile`.
+
+---
+
+## Alterações Necessárias
+
+### 1. `src/components/admin/BridgeDetailsDialog.tsx`
+
+| Alteração | Descrição |
+|-----------|-----------|
+| Remover abas | Mudar de 4 para 2 abas (Informações, Mapa/KMZ) |
+| Status Estrutural | Trocar Select por Badge somente leitura |
+| Remover imports | Cpu, Users (ícones não usados) |
+| Remover hooks | useUsers (não mais necessário) |
+
+### 2. `src/pages/Admin.tsx`
+
+| Alteração | Descrição |
+|-----------|-----------|
+| Cruzar dispositivos com telemetria | Usar `useTelemetryByCompany` para status real |
+| Corrigir "Object]" | Tratar `bridgeId` como objeto ou string |
+
+### 3. `src/lib/api/devices.ts`
+
+| Alteração | Descrição |
+|-----------|-----------|
+| Tratar `bridge_id` | Extrair `_id` se vier como objeto populado |
+
+---
+
+## Código: BridgeDetailsDialog.tsx
+
+```tsx
+// Mudanças principais:
+
+// 1. TabsList com 2 colunas
+<TabsList className="grid w-full grid-cols-2">
+  <TabsTrigger value="info">...</TabsTrigger>
+  <TabsTrigger value="map">...</TabsTrigger>
+</TabsList>
+
+// 2. Status Estrutural como Badge (somente leitura)
+<div className="space-y-2">
+  <Label>Status Estrutural</Label>
+  {getStatusBadge(formData.structuralStatus)}
+  <p className="text-xs text-muted-foreground">
+    Status determinado automaticamente pelo sistema de monitoramento
+  </p>
+</div>
+
+// 3. Remover TabsContent de "sensors" e "users"
+```
+
+---
+
+## Código: Admin.tsx - Dispositivos com Status Real
+
+```tsx
+// Adicionar hook de telemetria
+const { data: telemetryData } = useTelemetryByCompany(selectedCompanyId || undefined);
+
+// Criar mapa de status por deviceId
+const telemetryStatusMap = useMemo(() => {
+  const map = new Map<string, string>();
+  telemetryData?.forEach(t => {
+    map.set(t.deviceId, t.status || 'offline');
+  });
+  return map;
+}, [telemetryData]);
+
+// Na tabela de dispositivos:
+<TableCell>
+  {getStatusBadge(telemetryStatusMap.get(device.deviceId) || device.status)}
+</TableCell>
+```
+
+---
+
+## Código: devices.ts - Corrigir bridgeId
+
+```typescript
+export function mapApiDeviceToSensor(apiDevice: ApiDevice): Sensor {
+  // Tratar bridge_id como objeto ou string
+  const bridgeId = typeof apiDevice.bridge_id === 'object' && apiDevice.bridge_id !== null
+    ? (apiDevice.bridge_id as any)._id || String(apiDevice.bridge_id)
+    : apiDevice.bridge_id;
+
+  return {
+    id: apiDevice._id,
+    deviceId: apiDevice.device_id || apiDevice.name,
+    bridgeId: bridgeId,
+    // ...resto igual
+  };
 }
 ```
 
-### Problema 2: Painel não atualiza em tempo real
-Quando o usuário clica em um sensor, `selectedSensor3D` fica estático (um snapshot). Os dados do WebSocket atualizam `bridge3DSensors`, mas o painel continua mostrando os valores antigos.
+---
 
-## Solução
+## Sobre a API
 
-### 1. Atualizar `useTelemetrySocket.ts` para extrair todos os campos
+Com base na estrutura atual:
+- `PUT /bridges/:id` já aceita `kmz_file` como string URL
+- `GET /devices-crud` retorna `bridge_id` que pode estar populado como objeto
 
-Modificar o mapeamento do evento WebSocket para incluir todos os dados:
+**Não é necessário alterar a API** se `bridge_id` vier como string. Caso venha como objeto, o mapeamento no frontend irá tratar.
 
-```typescript
-const mapped: TelemetryData = {
-  deviceId: event.device_id,
-  bridgeId: event.bridge_id,
-  timestamp: event.ts,
-  modoOperacao: event.type === "freq" ? "frequencia" : "aceleracao",
-  status: event.payload.severity,
-  // Extrair TODOS os peaks
-  frequency: event.type === "freq" ? event.payload.peaks?.[0]?.f : undefined,
-  magnitude1: event.type === "freq" ? event.payload.peaks?.[0]?.mag : undefined,
-  frequency2: event.type === "freq" ? event.payload.peaks?.[1]?.f : undefined,
-  magnitude2: event.type === "freq" ? event.payload.peaks?.[1]?.mag : undefined,
-  // Aceleração
-  acceleration: event.type === "accel" && event.payload.value !== undefined
-    ? { x: 0, y: 0, z: event.payload.value }
-    : undefined,
-};
-```
-
-### 2. Atualizar painel para sincronizar com dados em tempo real
-
-No `BridgeDetail.tsx`, criar um `useMemo` que mantém o `selectedSensor3D` sincronizado com os dados mais recentes:
-
-```typescript
-// Sincronizar sensor selecionado com dados atualizados
-const currentSelectedSensor = useMemo(() => {
-  if (!selectedSensor3D) return null;
-  
-  // Buscar versão atualizada do sensor em bridge3DSensors
-  const updated = bridge3DSensors.find(s => s.id === selectedSensor3D.id);
-  return updated || selectedSensor3D;
-}, [selectedSensor3D, bridge3DSensors]);
-```
-
-E usar `currentSelectedSensor` no painel em vez de `selectedSensor3D`.
-
-## Fluxo Corrigido
-
-```text
-WebSocket recebe evento freq
-    │
-    ▼
-useTelemetrySocket mapeia TODOS os campos:
-- frequency, magnitude1, frequency2, magnitude2
-    │
-    ▼
-useTelemetry.combinedData atualiza com realtimeData
-    │
-    ▼
-bridge3DSensors recalcula (useMemo)
-    │
-    ▼
-currentSelectedSensor sincroniza automaticamente
-    │
-    ▼
-Painel exibe valores atualizados em tempo real
-```
+---
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/hooks/useTelemetrySocket.ts` | Extrair magnitude1, magnitude2, frequency2 do payload |
-| `src/pages/BridgeDetail.tsx` | Criar `currentSelectedSensor` para sincronizar painel em tempo real |
+| `src/components/admin/BridgeDetailsDialog.tsx` | Remover abas Sensores/Usuários, Status Estrutural somente leitura |
+| `src/pages/Admin.tsx` | Adicionar telemetria para status real dos dispositivos |
+| `src/lib/api/devices.ts` | Tratar `bridge_id` como objeto ou string |
+
+---
 
 ## Resultado Esperado
 
-- **Frequência Pico 1**: `3.52 Hz` (valor real atualizado via WebSocket)
-- **Magnitude Pico 1**: `359.73` (valor real)
-- **Frequência Pico 2**: `3.56 Hz` (valor real)
-- **Magnitude Pico 2**: `315.92` (valor real)
-- **Atualização automática**: Valores mudam em tempo real sem precisar clicar novamente
+1. **Diálogo de ponte**: 2 abas (Informações, Mapa/KMZ)
+2. **Status Estrutural**: Exibido como badge, não editável
+3. **Tabela de dispositivos**: Status real da telemetria (Normal/Alerta/Crítico)
+4. **Coluna Ponte**: Nome correto da ponte (não "Object]")
+5. **KMZ**: Salvo no banco e exibido no mapa
+
