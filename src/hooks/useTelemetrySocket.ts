@@ -50,16 +50,20 @@ export function useTelemetrySocket(bridgeId?: string) {
     const handleTelemetry = (event: TelemetryEvent) => {
       console.log("[Telemetry] Received:", event);
 
-      // Map event to TelemetryData format
+      // Map event to TelemetryData format - extract ALL peak data
+      const peaks = event.payload.peaks || [];
       const mapped: TelemetryData = {
         deviceId: event.device_id,
         bridgeId: event.bridge_id,
         timestamp: event.ts,
         modoOperacao: event.type === "freq" ? "frequencia" : "aceleracao",
         status: event.payload.severity,
-        frequency: event.type === "freq" && event.payload.peaks?.[0]
-          ? event.payload.peaks[0].f
-          : undefined,
+        // Extract ALL peaks: frequency and magnitude for both peaks
+        frequency: event.type === "freq" ? peaks[0]?.f : undefined,
+        magnitude1: event.type === "freq" ? peaks[0]?.mag : undefined,
+        frequency2: event.type === "freq" ? peaks[1]?.f : undefined,
+        magnitude2: event.type === "freq" ? peaks[1]?.mag : undefined,
+        // Acceleration
         acceleration: event.type === "accel" && event.payload.value !== undefined
           ? { x: 0, y: 0, z: event.payload.value }
           : undefined,
