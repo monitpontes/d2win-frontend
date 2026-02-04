@@ -150,6 +150,14 @@ export default function BridgeDetail() {
     });
   }, [sensors, telemetryData]);
 
+  // Sync selected sensor with real-time data from bridge3DSensors
+  const currentSelectedSensor = useMemo(() => {
+    if (!selectedSensor3D) return null;
+    // Find updated version in bridge3DSensors (which gets WebSocket updates)
+    const updated = bridge3DSensors.find(s => s.id === selectedSensor3D.id);
+    return updated || selectedSensor3D;
+  }, [selectedSensor3D, bridge3DSensors]);
+
   // Loading state
   if (isLoadingBridge) {
     return (
@@ -372,72 +380,72 @@ export default function BridgeDetail() {
                   </div>
                   <div className="space-y-4">
                     <h4 className="font-medium">Dados dos Sensores</h4>
-                    {selectedSensor3D ? (
+                    {currentSelectedSensor ? (
                       <div className="space-y-4">
-                        <div className="space-y-2 rounded-lg border bg-card p-4">
-                          {/* Info rows - one per line */}
+                        {/* Sensor Info */}
+                        <div className="space-y-2">
                           <div className="flex justify-between items-center py-1 border-b">
-                            <span className="text-muted-foreground text-sm">Nome:</span>
-                            <span className="font-medium text-sm">{selectedSensor3D.name}</span>
+                            <span className="text-muted-foreground text-sm">Sensor:</span>
+                            <span className="font-bold text-sm">{currentSelectedSensor.name}</span>
                           </div>
                           <div className="flex justify-between items-center py-1 border-b">
                             <span className="text-muted-foreground text-sm">Posição:</span>
-                            <span className="font-medium text-sm text-primary">{selectedSensor3D.position}</span>
+                            <span className="font-medium text-sm">{currentSelectedSensor.position}</span>
                           </div>
                           <div className="flex justify-between items-center py-1 border-b">
                             <span className="text-muted-foreground text-sm">Tipo:</span>
-                            <span className="font-medium text-sm text-primary">{selectedSensor3D.type}</span>
+                            <span className="font-medium text-sm">{currentSelectedSensor.type}</span>
                           </div>
                           <div className="flex justify-between items-center py-1 border-b">
                             <span className="text-muted-foreground text-sm">Status:</span>
-                            <div className="flex items-center gap-1">
-                              <span className={cn(
+                            <div className="flex items-center gap-2">
+                              <div className={cn(
                                 "w-2 h-2 rounded-full",
-                                selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' 
+                                currentSelectedSensor.status === 'alert' || currentSelectedSensor.status === 'critical' 
                                   ? 'bg-destructive' 
-                                  : selectedSensor3D.status === 'warning' 
+                                  : currentSelectedSensor.status === 'warning' 
                                   ? 'bg-warning' 
                                   : 'bg-success'
                               )} />
                               <Badge variant={
-                                selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' 
+                                currentSelectedSensor.status === 'alert' || currentSelectedSensor.status === 'critical' 
                                   ? 'destructive' 
-                                  : selectedSensor3D.status === 'warning' 
+                                  : currentSelectedSensor.status === 'warning' 
                                   ? 'outline' 
                                   : 'secondary'
                               } className="text-xs">
-                                {selectedSensor3D.status === 'alert' || selectedSensor3D.status === 'critical' ? 'Alerta' : 
-                                 selectedSensor3D.status === 'warning' ? 'Atenção' : 'Normal'}
+                                {currentSelectedSensor.status === 'alert' || currentSelectedSensor.status === 'critical' ? 'Alerta' : 
+                                 currentSelectedSensor.status === 'warning' ? 'Atenção' : 'Normal'}
                               </Badge>
                             </div>
                           </div>
                           
-                          {selectedSensor3D.deviceType === 'frequencia' && (
+                          {currentSelectedSensor.deviceType === 'frequencia' && (
                             <>
                               <div className="flex justify-between items-center py-1 border-b">
                                 <span className="text-muted-foreground text-sm">Frequência Pico 1:</span>
-                                <span className="font-bold text-sm">{selectedSensor3D.frequency1?.toFixed(2) || '-'} Hz</span>
+                                <span className="font-bold text-sm">{currentSelectedSensor.frequency1?.toFixed(2) || '-'} Hz</span>
                               </div>
                               <div className="flex justify-between items-center py-1 border-b">
                                 <span className="text-muted-foreground text-sm">Magnitude Pico 1:</span>
-                                <span className="font-medium text-sm">{selectedSensor3D.magnitude1?.toFixed(2) || '-'}</span>
+                                <span className="font-medium text-sm">{currentSelectedSensor.magnitude1?.toFixed(2) || '-'}</span>
                               </div>
                               <div className="flex justify-between items-center py-1 border-b">
                                 <span className="text-muted-foreground text-sm">Frequência Pico 2:</span>
-                                <span className="font-bold text-sm">{selectedSensor3D.frequency2?.toFixed(2) || '-'} Hz</span>
+                                <span className="font-bold text-sm">{currentSelectedSensor.frequency2?.toFixed(2) || '-'} Hz</span>
                               </div>
                               <div className="flex justify-between items-center py-1 border-b">
                                 <span className="text-muted-foreground text-sm">Magnitude Pico 2:</span>
-                                <span className="font-medium text-sm">{selectedSensor3D.magnitude2?.toFixed(2) || '-'}</span>
+                                <span className="font-medium text-sm">{currentSelectedSensor.magnitude2?.toFixed(2) || '-'}</span>
                               </div>
                             </>
                           )}
                           
-                          {selectedSensor3D.deviceType === 'aceleracao' && (
+                          {currentSelectedSensor.deviceType === 'aceleracao' && (
                             <>
                               <div className="flex justify-between items-center py-1 border-b">
                                 <span className="text-muted-foreground text-sm">Aceleração Z:</span>
-                                <span className="font-bold text-sm">{selectedSensor3D.acceleration?.toFixed(2) || '-'} m/s²</span>
+                                <span className="font-bold text-sm">{currentSelectedSensor.acceleration?.toFixed(2) || '-'} m/s²</span>
                               </div>
                             </>
                           )}
@@ -445,8 +453,8 @@ export default function BridgeDetail() {
                           <div className="flex justify-between items-center py-1">
                             <span className="text-muted-foreground text-sm">Timestamp:</span>
                             <span className="font-mono text-xs">
-                              {selectedSensor3D.timestamp 
-                                ? format(new Date(selectedSensor3D.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })
+                              {currentSelectedSensor.timestamp 
+                                ? format(new Date(currentSelectedSensor.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })
                                 : '-'
                               }
                             </span>
@@ -456,7 +464,7 @@ export default function BridgeDetail() {
                         {/* Sensor Chart - Last 8 readings from real timeSeriesData */}
                         <div className="rounded-lg border bg-card p-4">
                           <h5 className="font-medium text-sm mb-2">
-                            {selectedSensor3D.deviceType === 'frequencia' 
+                            {currentSelectedSensor.deviceType === 'frequencia' 
                               ? 'Frequência - Últimas Leituras'
                               : 'Aceleração - Últimas Leituras'
                             }
@@ -465,7 +473,7 @@ export default function BridgeDetail() {
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart data={
                                 timeSeriesData
-                                  .filter(point => point.deviceId === selectedSensor3D.id)
+                                  .filter(point => point.deviceId === currentSelectedSensor.id)
                                   .slice(-8)
                                   .map(point => ({
                                     time: format(new Date(point.timestamp), 'HH:mm:ss'),
@@ -483,10 +491,10 @@ export default function BridgeDetail() {
                                 <Tooltip 
                                   contentStyle={{ fontSize: 11 }}
                                   formatter={(value: number) => [
-                                    selectedSensor3D.deviceType === 'frequencia' 
+                                    currentSelectedSensor.deviceType === 'frequencia' 
                                       ? `${value.toFixed(2)} Hz` 
                                       : `${value.toFixed(3)} m/s²`,
-                                    selectedSensor3D.deviceType === 'frequencia' ? 'Frequência' : 'Aceleração'
+                                    currentSelectedSensor.deviceType === 'frequencia' ? 'Frequência' : 'Aceleração'
                                   ]}
                                 />
                                 <Line 
