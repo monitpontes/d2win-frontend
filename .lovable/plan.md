@@ -1,539 +1,348 @@
 
+# Plano: Gráficos com Dados Reais + Append via WebSocket
 
-# Plano: Implementar WebSocket para Atualização em Tempo Real
+## Objetivo
 
-## Situação Atual
-
-### Backend (d2win-api) - Já Pronto
-O backend já possui Socket.IO configurado e funcionando:
-
-```javascript
-// src/app.js - Backend
-const io = new SocketIOServer(httpServer, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
-});
-
-globalThis.__io = io;
-
-io.on("connection", (socket) => {
-  socket.on("join_bridge", ({ bridge_id }) => {
-    socket.join(`bridge:${bridge_id}`);
-  });
-  
-  socket.on("join_company", ({ company_id }) => {
-    socket.join(`company:${company_id}`);
-  });
-});
-```
-
-Quando um sensor envia dados, o backend emite via WebSocket:
-
-```javascript
-// ingestAccel.js e ingestFreq.js
-io.to(`bridge:${bridge_id}`).emit("telemetry", {
-  type: "accel" | "freq",
-  bridge_id: "...",
-  company_id: "...",
-  device_id: "...",
-  ts: "2026-01-15T10:30:00Z",
-  payload: {
-    // Para accel:
-    axis: "z",
-    value: 9.84,
-    severity: "normal"
-    
-    // Para freq:
-    peaks: [{ f: 3.55, mag: 758 }],
-    severity: "normal"
-  }
-});
-```
-
-### Frontend (Atual) - Precisa Atualizar
-O frontend usa apenas polling HTTP que não atualiza automaticamente:
-- `useTelemetry` faz 2 requisições HTTP (latest + history)
-- `historyQuery` não tem `refetchInterval`
-- Não há conexão WebSocket
+Atualizar os gráficos para usar dados reais da API com atualização automática via WebSocket, sem fazer requisições extras que aumentem custos.
 
 ---
 
-## Solução
+## Abordagem Segura (Sem Custos Extras)
 
-Implementar cliente Socket.IO no frontend para receber dados em tempo real e fazer append nos gráficos automaticamente.
+A API `/telemetry/history/bridge/{id}` já suporta parâmetro `limit`. O backend já limita os dados retornados:
+
+```javascript
+// Backend (d2win-api)
+const limit = parseInt(req.query.limit) || 500;
+```
+
+Usaremos `limit: 100` para gráficos (suficiente para visualização) e faremos append apenas dos dados que chegam via WebSocket - **zero requisições extras**.
 
 ---
 
-## Arquitetura
+## Arquitetura de Dados
 
 ```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│                              FRONTEND                                     │
-│                                                                          │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐      │
-│  │  SocketContext   │───>│  useTelemetry   │───>│  BridgeCard     │      │
-│  │  (conexão WS)    │    │  (dados + stream)│    │  BridgeDetail   │      │
-│  └────────┬────────┘    └─────────────────┘    │  DataAnalysis   │      │
-│           │                                      └─────────────────┘      │
-│           │ join_bridge                                                    │
-│           │ emit("telemetry")                                             │
-└───────────┼──────────────────────────────────────────────────────────────┘
-            │ WebSocket
-            ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         BACKEND (d2win-api)                              │
-│                                                                          │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐      │
-│  │  Socket.IO       │<───│  ingestAccel    │<───│  IoT Sensor     │      │
-│  │  Server          │    │  ingestFreq     │    │  (dispositivo)  │      │
-│  └─────────────────┘    └─────────────────┘    └─────────────────┘      │
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     CARREGAMENTO INICIAL                        │
+│                                                                 │
+│  historyQuery (limit: 100)  ──────>  Expande freq[] e accel[]  │
+│         (1 requisição)               para timeSeriesData       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     ATUALIZAÇÃO EM TEMPO REAL                   │
+│                                                                 │
+│  WebSocket "telemetry" event  ──────>  Append em timeSeriesData │
+│     (sem requisição HTTP)             (re-render automático)    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Arquivos a Criar/Modificar
+## Alterações por Arquivo
 
-| Arquivo | Operação | Descrição |
-|---------|----------|-----------|
-| `src/lib/socket.ts` | Criar | Cliente Socket.IO singleton |
-| `src/contexts/SocketContext.tsx` | Criar | Context para gerenciar conexão WS |
-| `src/hooks/useTelemetrySocket.ts` | Criar | Hook para receber dados em tempo real |
-| `src/hooks/useTelemetry.ts` | Modificar | Integrar com WebSocket |
-| `src/main.tsx` | Modificar | Adicionar SocketProvider |
-| `package.json` | Modificar | Adicionar `socket.io-client` |
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/lib/api/telemetry.ts` | Adicionar função `getHistoryTimeSeries` que expande `freq[]` e `accel[]` |
+| `src/hooks/useTelemetry.ts` | Adicionar query `timeSeriesQuery` + merge com dados WebSocket |
+| `src/lib/utils/formatValue.ts` | Adicionar formatos com segundos (`HH:mm:ss`, `dd/MM HH:mm:ss`) |
+| `src/components/dashboard/BridgeCard.tsx` | Usar dados reais nos mini-gráficos com segundos |
+| `src/components/bridge/DataAnalysisSection.tsx` | Substituir dados mockados por `timeSeriesData` |
 
 ---
 
 ## Seção Técnica
 
-### 1. Instalar socket.io-client
+### 1. telemetry.ts - Expandir Histórico (Reutiliza dados já buscados)
 
-```bash
-npm install socket.io-client
-```
-
-### 2. Criar Cliente Socket.IO
+Adicionar interface e função que expande os arrays retornados pela API:
 
 ```typescript
-// src/lib/socket.ts
-import { io, Socket } from "socket.io-client";
-
-const API_URL = import.meta.env.VITE_API_URL || "https://d2win-api.onrender.com";
-
-let socket: Socket | null = null;
-
-export function getSocket(): Socket {
-  if (!socket) {
-    socket = io(API_URL, {
-      autoConnect: false,
-      transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-    });
-
-    socket.on("connect", () => {
-      console.log("[Socket] Connected:", socket?.id);
-    });
-
-    socket.on("disconnect", (reason) => {
-      console.log("[Socket] Disconnected:", reason);
-    });
-
-    socket.on("connect_error", (error) => {
-      console.error("[Socket] Connection error:", error.message);
-    });
-  }
-  return socket;
+// Nova interface para série temporal
+export interface TelemetryTimeSeriesPoint {
+  deviceId: string;
+  bridgeId: string;
+  timestamp: string;
+  type: 'frequency' | 'acceleration';
+  value: number;
+  severity?: string;
 }
 
-export function connectSocket(): void {
-  const s = getSocket();
-  if (!s.connected) {
-    s.connect();
-  }
-}
-
-export function disconnectSocket(): void {
-  if (socket?.connected) {
-    socket.disconnect();
-  }
-}
-```
-
-### 3. Criar SocketContext
-
-```typescript
-// src/contexts/SocketContext.tsx
-import { createContext, useContext, useEffect, useRef, ReactNode } from "react";
-import { Socket } from "socket.io-client";
-import { getSocket, connectSocket, disconnectSocket } from "@/lib/socket";
-
-interface SocketContextValue {
-  socket: Socket | null;
-  isConnected: boolean;
-  joinBridge: (bridgeId: string) => void;
-  leaveBridge: (bridgeId: string) => void;
-  joinCompany: (companyId: string) => void;
-  leaveCompany: (companyId: string) => void;
-}
-
-const SocketContext = createContext<SocketContextValue | null>(null);
-
-export function SocketProvider({ children }: { children: ReactNode }) {
-  const socketRef = useRef<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-
-  useEffect(() => {
-    socketRef.current = getSocket();
+// Nova função - MESMA requisição, apenas processa diferente
+export async function getHistoryTimeSeries(
+  bridgeId: string,
+  params?: TelemetryHistoryParams
+): Promise<TelemetryTimeSeriesPoint[]> {
+  // Usa limit: 100 por padrão para gráficos
+  const queryParams = { limit: 100, ...params };
+  const response = await api.get<ApiHistoryResponse>(
+    `/telemetry/history/bridge/${bridgeId}`, 
+    { params: queryParams }
+  );
+  
+  const data = response.data;
+  if (!data?.items) return [];
+  
+  const points: TelemetryTimeSeriesPoint[] = [];
+  
+  // Expande arrays que já vieram da API (sem nova requisição)
+  data.items.forEach(item => {
+    // Frequência - expande array
+    item.freq?.forEach(reading => {
+      if (reading.peaks?.[0]?.f) {
+        points.push({
+          deviceId: item.device_id,
+          bridgeId,
+          timestamp: reading.ts,
+          type: 'frequency',
+          value: reading.peaks[0].f,
+          severity: reading.severity,
+        });
+      }
+    });
     
-    const onConnect = () => setIsConnected(true);
-    const onDisconnect = () => setIsConnected(false);
-
-    socketRef.current.on("connect", onConnect);
-    socketRef.current.on("disconnect", onDisconnect);
-
-    connectSocket();
-
-    return () => {
-      socketRef.current?.off("connect", onConnect);
-      socketRef.current?.off("disconnect", onDisconnect);
-      disconnectSocket();
-    };
-  }, []);
-
-  const joinBridge = (bridgeId: string) => {
-    socketRef.current?.emit("join_bridge", { bridge_id: bridgeId });
-    console.log("[Socket] Joined bridge:", bridgeId);
-  };
-
-  const leaveBridge = (bridgeId: string) => {
-    socketRef.current?.emit("leave_bridge", { bridge_id: bridgeId });
-  };
-
-  const joinCompany = (companyId: string) => {
-    socketRef.current?.emit("join_company", { company_id: companyId });
-  };
-
-  const leaveCompany = (companyId: string) => {
-    socketRef.current?.emit("leave_company", { company_id: companyId });
-  };
-
-  return (
-    <SocketContext.Provider value={{
-      socket: socketRef.current,
-      isConnected,
-      joinBridge,
-      leaveBridge,
-      joinCompany,
-      leaveCompany,
-    }}>
-      {children}
-    </SocketContext.Provider>
+    // Aceleração (Z) - expande array
+    item.accel?.forEach(reading => {
+      points.push({
+        deviceId: item.device_id,
+        bridgeId,
+        timestamp: reading.ts,
+        type: 'acceleration',
+        value: reading.value, // Sempre eixo Z
+        severity: reading.severity,
+      });
+    });
+  });
+  
+  // Ordena por timestamp
+  return points.sort((a, b) => 
+    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   );
 }
-
-export function useSocket() {
-  const context = useContext(SocketContext);
-  if (!context) {
-    throw new Error("useSocket must be used within SocketProvider");
-  }
-  return context;
-}
 ```
 
-### 4. Criar Hook useTelemetrySocket
+### 2. useTelemetry.ts - Merge com WebSocket
 
 ```typescript
-// src/hooks/useTelemetrySocket.ts
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useSocket } from "@/contexts/SocketContext";
-import type { TelemetryData } from "@/lib/api";
-
-interface TelemetryEvent {
-  type: "accel" | "freq";
-  bridge_id: string;
-  company_id: string;
-  device_id: string;
-  ts: string;
-  payload: {
-    axis?: string;
-    value?: number;
-    peaks?: Array<{ f: number; mag: number }>;
-    severity: string;
-  };
-}
-
-export function useTelemetrySocket(bridgeId?: string) {
-  const { socket, isConnected, joinBridge, leaveBridge } = useSocket();
-  const [realtimeData, setRealtimeData] = useState<TelemetryData[]>([]);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-  const joinedRef = useRef<string | null>(null);
-
-  // Join/leave bridge room
-  useEffect(() => {
-    if (!bridgeId || !isConnected) return;
-
-    // Leave previous bridge if different
-    if (joinedRef.current && joinedRef.current !== bridgeId) {
-      leaveBridge(joinedRef.current);
-    }
-
-    joinBridge(bridgeId);
-    joinedRef.current = bridgeId;
-
-    return () => {
-      if (joinedRef.current) {
-        leaveBridge(joinedRef.current);
-        joinedRef.current = null;
-      }
-    };
-  }, [bridgeId, isConnected, joinBridge, leaveBridge]);
-
-  // Listen for telemetry events
-  useEffect(() => {
-    if (!socket || !bridgeId) return;
-
-    const handleTelemetry = (event: TelemetryEvent) => {
-      console.log("[Telemetry] Received:", event);
-
-      // Map event to TelemetryData format
-      const mapped: TelemetryData = {
-        deviceId: event.device_id,
-        bridgeId: event.bridge_id,
-        timestamp: event.ts,
-        modoOperacao: event.type === "freq" ? "frequencia" : "aceleracao",
-        status: event.payload.severity,
-        frequency: event.type === "freq" && event.payload.peaks?.[0]
-          ? event.payload.peaks[0].f
-          : undefined,
-        acceleration: event.type === "accel" && event.payload.value !== undefined
-          ? { x: 0, y: 0, z: event.payload.value }
-          : undefined,
-      };
-
-      setRealtimeData((prev) => {
-        // Find existing device or append
-        const idx = prev.findIndex((d) => d.deviceId === mapped.deviceId);
-        if (idx >= 0) {
-          const updated = [...prev];
-          updated[idx] = mapped;
-          return updated;
-        }
-        return [...prev, mapped];
-      });
-
-      setLastUpdate(new Date());
-    };
-
-    socket.on("telemetry", handleTelemetry);
-
-    return () => {
-      socket.off("telemetry", handleTelemetry);
-    };
-  }, [socket, bridgeId]);
-
-  // Clear realtime data when bridge changes
-  useEffect(() => {
-    setRealtimeData([]);
-    setLastUpdate(null);
-  }, [bridgeId]);
-
-  return {
-    realtimeData,
-    lastUpdate,
-    isConnected,
-  };
-}
-```
-
-### 5. Atualizar useTelemetry
-
-```typescript
-// src/hooks/useTelemetry.ts
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useEffect } from "react";
-import { telemetryService, type TelemetryData } from "@/lib/api";
-import { useTelemetrySocket } from "./useTelemetrySocket";
+import { TelemetryTimeSeriesPoint } from '@/lib/api/telemetry';
 
 export function useTelemetry(bridgeId?: string) {
-  // Socket para dados em tempo real
   const { realtimeData, lastUpdate, isConnected } = useTelemetrySocket(bridgeId);
 
-  // HTTP para dados iniciais (modo_operacao)
-  const latestQuery = useQuery({
-    queryKey: ["telemetry", "latest", bridgeId],
-    queryFn: () => telemetryService.getLatestByBridge(bridgeId!),
+  // ... queries existentes ...
+
+  // Query para série temporal (gráficos) - limit: 100
+  const timeSeriesQuery = useQuery({
+    queryKey: ['telemetry', 'timeseries', bridgeId],
+    queryFn: () => telemetryService.getHistoryTimeSeries(bridgeId!, { limit: 100 }),
     enabled: !!bridgeId,
-    staleTime: 60000, // Menos frequente - socket atualiza
+    staleTime: 5 * 60 * 1000, // 5 minutos - WebSocket atualiza em tempo real
   });
 
-  // HTTP para histórico inicial
-  const historyQuery = useQuery({
-    queryKey: ["telemetry", "history", bridgeId],
-    queryFn: () => telemetryService.getHistoryByBridge(bridgeId!, { limit: 500 }),
-    enabled: !!bridgeId,
-    staleTime: 60000,
-  });
-
-  // Combinar: HTTP inicial + WebSocket realtime
-  const combinedData = useMemo(() => {
-    const httpData = historyQuery.data || [];
-    const latestModes = latestQuery.data || [];
-
-    // Criar mapa de modo_operacao do latest
-    const modeByDevice = new Map<string, string>();
-    latestModes.forEach((d) => {
-      if (d.modoOperacao) modeByDevice.set(d.deviceId, d.modoOperacao);
-    });
-
-    // Merge HTTP data com modo correto
-    let merged = httpData.map((h) => ({
-      ...h,
-      modoOperacao: modeByDevice.get(h.deviceId) || h.modoOperacao,
-    }));
-
-    // Sobrescrever com dados realtime (mais recentes)
-    realtimeData.forEach((rt) => {
-      const idx = merged.findIndex((m) => m.deviceId === rt.deviceId);
-      if (idx >= 0) {
-        merged[idx] = { ...merged[idx], ...rt };
-      } else {
-        merged.push(rt);
-      }
-    });
-
-    return merged;
-  }, [latestQuery.data, historyQuery.data, realtimeData]);
+  // Combinar timeSeries + dados novos do WebSocket
+  const timeSeriesData = useMemo(() => {
+    const historical = timeSeriesQuery.data || [];
+    
+    // Converter realtimeData para formato timeseries
+    const newPoints: TelemetryTimeSeriesPoint[] = realtimeData
+      .filter(rt => rt.timestamp)
+      .map(rt => ({
+        deviceId: rt.deviceId,
+        bridgeId: rt.bridgeId,
+        timestamp: rt.timestamp!,
+        type: rt.modoOperacao === 'frequencia' ? 'frequency' as const : 'acceleration' as const,
+        value: rt.modoOperacao === 'frequencia' 
+          ? rt.frequency! 
+          : rt.acceleration?.z!,
+        severity: rt.status,
+      }))
+      .filter(p => p.value !== undefined);
+    
+    // Evitar duplicatas por deviceId + timestamp
+    const existingKeys = new Set(
+      historical.map(p => `${p.deviceId}-${p.timestamp}`)
+    );
+    const uniqueNew = newPoints.filter(
+      p => !existingKeys.has(`${p.deviceId}-${p.timestamp}`)
+    );
+    
+    // Append e ordenar
+    const merged = [...historical, ...uniqueNew].sort((a, b) => 
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+    
+    // Manter últimos 200 pontos para evitar crescimento infinito
+    return merged.slice(-200);
+  }, [timeSeriesQuery.data, realtimeData]);
 
   return {
     latestData: combinedData,
     historyData: historyQuery.data || [],
+    timeSeriesData, // Novo: série temporal para gráficos
     realtimeData,
-    isLoadingLatest: latestQuery.isLoading,
-    isLoadingHistory: historyQuery.isLoading,
-    isLoading: latestQuery.isLoading || historyQuery.isLoading,
+    isLoading: ...,
     isConnected,
     lastUpdate,
-    refetchLatest: latestQuery.refetch,
-    refetchHistory: historyQuery.refetch,
+    // ...
   };
 }
 ```
 
-### 6. Atualizar main.tsx
+### 3. formatValue.ts - Adicionar Segundos
 
 ```typescript
-// src/main.tsx
-import { SocketProvider } from "@/contexts/SocketContext";
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <SocketProvider>
-          <App />
-        </SocketProvider>
-      </AuthProvider>
-    </QueryClientProvider>
-  </StrictMode>
-);
-```
-
-### 7. Adicionar Indicador de Conexão (Opcional)
-
-No `BridgeCard.tsx` ou `BridgeDetail.tsx`:
-
-```typescript
-const { isConnected, lastUpdate } = useTelemetry(bridge.id);
-
-// Mostrar status da conexão
-<div className="flex items-center gap-2">
-  <span className={cn(
-    "h-2 w-2 rounded-full",
-    isConnected ? "bg-green-500" : "bg-red-500"
-  )} />
-  <span className="text-xs text-muted-foreground">
-    {isConnected ? "Tempo real" : "Offline"}
-  </span>
-  {lastUpdate && (
-    <span className="text-xs text-muted-foreground">
-      Última: {format(lastUpdate, "HH:mm:ss")}
-    </span>
-  )}
-</div>
-```
-
----
-
-## Fluxo de Dados
-
-```text
-1. Página carrega
-   ├── useTelemetry busca dados iniciais via HTTP
-   └── SocketProvider conecta ao WebSocket
-
-2. Usuário acessa BridgeDetail
-   ├── useTelemetrySocket emite "join_bridge"
-   └── Backend adiciona cliente à sala "bridge:{id}"
-
-3. Sensor envia dados (IoT → Backend)
-   ├── ingestAccel/ingestFreq salva no MongoDB
-   └── Emite io.to("bridge:{id}").emit("telemetry", {...})
-
-4. Frontend recebe evento
-   ├── useTelemetrySocket atualiza realtimeData
-   ├── useTelemetry combina com dados existentes
-   └── Componentes re-renderizam com valor novo
-```
-
----
-
-## Formato do Evento WebSocket
-
-```typescript
-// Evento recebido do backend
-interface TelemetryEvent {
-  type: "accel" | "freq";
-  bridge_id: string;
-  company_id: string;
-  device_id: string;
-  ts: string;
-  payload: {
-    // Para type === "accel":
-    axis: "x" | "y" | "z";
-    value: number;      // Ex: 9.84 m/s²
-    severity: "normal" | "warning" | "critical";
-
-    // Para type === "freq":
-    status: "atividade_detectada" | "sem_atividade";
-    peaks: Array<{ f: number; mag: number }>;  // Ex: [{ f: 3.55, mag: 758 }]
-    severity: "normal" | "warning" | "critical";
+export function formatDateValue(
+  dateValue: string | Date | null | undefined,
+  formatStr: string = 'dd/MM/yyyy'
+): string {
+  if (!dateValue) return '-';
+  
+  try {
+    const date = typeof dateValue === 'string' ? new Date(dateValue) : dateValue;
+    if (isNaN(date.getTime())) return '-';
+    
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0'); // NOVO
+    
+    switch (formatStr) {
+      case 'dd/MM/yyyy':
+        return `${day}/${month}/${year}`;
+      case 'dd/MM/yyyy HH:mm':
+        return `${day}/${month}/${year} ${hours}:${minutes}`;
+      case 'dd/MM/yyyy HH:mm:ss': // NOVO
+        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+      case 'dd/MM HH:mm':
+        return `${day}/${month} ${hours}:${minutes}`;
+      case 'dd/MM HH:mm:ss': // NOVO
+        return `${day}/${month} ${hours}:${minutes}:${seconds}`;
+      case 'HH:mm:ss': // NOVO
+        return `${hours}:${minutes}:${seconds}`;
+      case 'HH:mm':
+        return `${hours}:${minutes}`;
+      default:
+        return `${day}/${month}/${year}`;
+    }
+  } catch {
+    return '-';
   }
 }
 ```
 
+### 4. BridgeCard.tsx - Timestamps com Segundos
+
+```typescript
+// Na tabela - updatedAt com segundos
+updatedAt: telemetry.timestamp 
+  ? formatDateValue(telemetry.timestamp, 'dd/MM HH:mm:ss') 
+  : '-',
+
+// Nos gráficos - eixo X com segundos
+time: formatDateValue(d.timestamp, 'HH:mm:ss'),
+
+// Footer - atualização com segundos
+format(new Date(bridge.lastUpdate), "dd/MM/yyyy, HH:mm:ss")
+```
+
+### 5. DataAnalysisSection.tsx - Gráficos com Dados Reais
+
+```typescript
+const { timeSeriesData, latestData, isConnected, lastUpdate } = useTelemetry(bridgeId);
+
+// Dados de ACELERAÇÃO para gráficos (eixo Z)
+const timeSeriesAcceleration = useMemo(() => {
+  if (!timeSeriesData?.length) {
+    // Fallback mock apenas se não houver dados
+    return Array.from({ length: 30 }, (_, i) => ({
+      date: `${String(i + 1).padStart(2, '0')}/01`,
+      valueZ: 9.7 + Math.random() * 0.9,
+    }));
+  }
+  
+  return timeSeriesData
+    .filter(d => d.type === 'acceleration')
+    .slice(-50)
+    .map(d => ({
+      date: formatDateValue(d.timestamp, 'HH:mm:ss'),
+      valueZ: d.value,
+      device: d.deviceId,
+      severity: d.severity,
+    }));
+}, [timeSeriesData]);
+
+// Dados de FREQUÊNCIA para gráficos (eixo Z)
+const timeSeriesFrequency = useMemo(() => {
+  if (!timeSeriesData?.length) {
+    // Fallback mock
+    return Array.from({ length: 30 }, (_, i) => ({
+      date: `${String(i + 1).padStart(2, '0')}/01`,
+      s1Z: 3.5 + Math.random() * 0.5,
+    }));
+  }
+  
+  // Agrupar por device para múltiplas linhas
+  const byDevice = new Map<string, Array<{date: string, value: number}>>();
+  
+  timeSeriesData
+    .filter(d => d.type === 'frequency')
+    .slice(-100)
+    .forEach(d => {
+      if (!byDevice.has(d.deviceId)) {
+        byDevice.set(d.deviceId, []);
+      }
+      byDevice.get(d.deviceId)!.push({
+        date: formatDateValue(d.timestamp, 'HH:mm:ss'),
+        value: d.value,
+      });
+    });
+  
+  // Transformar para formato do gráfico
+  // ... lógica de merge por timestamp
+}, [timeSeriesData]);
+```
+
 ---
 
-## Benefícios
+## Fluxo de Atualização
 
-| Aspecto | Antes (Polling) | Depois (WebSocket) |
-|---------|-----------------|---------------------|
-| Latência | 30-60 segundos | Instantâneo (~50ms) |
-| Requisições HTTP | ~120/hora por cliente | 2 (apenas inicial) |
-| Custo servidor | Alto | Baixo |
-| Dados no gráfico | Estáticos | Append automático |
-| Experiência | Precisa refresh | Tempo real |
+```text
+1. Usuário abre página da ponte
+   ├── timeSeriesQuery busca 100 pontos (1 requisição HTTP)
+   └── Socket conecta e entra na sala "bridge:{id}"
+
+2. WebSocket recebe evento "telemetry"
+   ├── useTelemetrySocket adiciona a realtimeData
+   └── useMemo recalcula timeSeriesData (append)
+
+3. Gráficos re-renderizam
+   └── Novo ponto aparece na extremidade direita
+
+4. Após 200 pontos, remove os mais antigos
+   └── Mantém memória constante
+```
 
 ---
 
-## Estimativa
+## Controle de Custos
 
-- **Tempo:** ~45 minutos
-- **Arquivos novos:** 3
-- **Arquivos modificados:** 3
-- **Dependência:** socket.io-client
-- **Complexidade:** Média
+| Operação | Antes | Depois |
+|----------|-------|--------|
+| Requisições HTTP | 2 por ponte | 3 (latest + history + timeseries) - **uma vez só** |
+| Polling | historyQuery a cada 30s | **Nenhum** - WebSocket atualiza |
+| Dados buscados | limit: 500 | limit: 100 (suficiente para gráficos) |
+| Atualizações | Refetch completo | Append incremental |
 
+---
+
+## Resultado
+
+- Gráficos usam dados reais da API
+- Timestamps exibem segundos (HH:mm:ss)
+- Append automático quando WebSocket recebe dados
+- Limite de 100 pontos iniciais + 200 máximo em memória
+- Zero polling adicional - apenas WebSocket para atualizações
