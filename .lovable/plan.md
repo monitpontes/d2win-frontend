@@ -1,109 +1,148 @@
 
+# Plano: Corrigir Match entre Devices e Telemetria
 
-# Plano: Melhorias no BridgeCard - Carregamento Inicial, Status 10min e Tabela Ajustada
+## Problema Identificado
 
-## Resumo das Alterações
+O match entre devices e telemetria está falhando porque:
 
-1. **Carregar dados iniciais de uma vez** - Usar `useDevices` para mostrar todos os sensores imediatamente
-2. **Status baseado em 10 minutos** - Sensor ativo se último dado foi enviado nos últimos 10 minutos
-3. **Tabela com 7 colunas** - Sensor | Eixo | Último Valor | Referência | Variação | Status | Atualizado
+| Sistema | Campo Usado | Valor |
+|---------|-------------|-------|
+| Devices (atual) | `id` = `_id` | `68c8507fca1f72aed1c22fcf` |
+| Telemetria | `deviceId` = `device_id` | `"Motiva_P1_S01"` |
+
+A comparação `latestData.find(t => t.deviceId === device.id)` nunca encontra match porque compara ObjectId com string nome.
+
+## Estrutura Real do Banco (conforme imagens)
+
+**Devices:**
+```json
+{
+  "_id": ObjectId("68c8507fca1f72aed1c22fcf"),
+  "device_id": "Motiva_P1_S03",  // <-- Usado para match
+  "name": "Motiva_P1_S03",       // <-- Exibição
+  "bridge_id": ObjectId("..."),
+  "modo_operacao": "frequencia"
+}
+```
+
+**Telemetria:**
+```json
+{
+  "device_id": "Motiva_P1_S01",  // <-- Match via este campo
+  "peaks": [...],
+  "status": "atividade_detectada"
+}
+```
 
 ---
 
-## Estrutura da Tabela Final
+## Solução
 
-| Sensor | Eixo | Último Valor | Referência | Variação | Status | Atualizado |
-|--------|------|--------------|------------|----------|--------|------------|
-| Motiva_P1_S02 | Z | 10.07 m/s² | < 10 m/s² | +0.7% | ● | 04/02 15:12:58 |
+### 1. Atualizar Interface ApiDevice
 
-Removido apenas a coluna "Tipo" para economizar espaço.
-
----
-
-## Alterações Técnicas
-
-### 1. Carregar Devices do Banco Primeiro
+Adicionar campo `device_id` que é o identificador string usado pela telemetria:
 
 ```typescript
-// Adicionar useDevices
-const { devices, isLoading: isLoadingDevices } = useDevices(undefined, bridge.id);
-const { latestData, timeSeriesData } = useTelemetry(bridge.id);
+// src/lib/api/devices.ts
+export interface ApiDevice {
+  _id: string;
+  device_id: string;  // NOVO: "Motiva_P1_S03"
+  bridge_id: string;
+  company_id: string;
+  type: SensorType;
+  name: string;
+  // ...
+}
+```
 
-// Combinar devices com telemetria
+### 2. Atualizar Interface Sensor
+
+Adicionar campo `deviceId` para guardar o identificador string:
+
+```typescript
+// src/types/index.ts
+export interface Sensor {
+  id: string;        // ObjectId do MongoDB
+  deviceId: string;  // NOVO: "Motiva_P1_S03" para match com telemetria
+  bridgeId: string;
+  name: string;
+  // ...
+}
+```
+
+### 3. Atualizar Mapeamento
+
+```typescript
+// src/lib/api/devices.ts
+export function mapApiDeviceToSensor(apiDevice: ApiDevice): Sensor {
+  return {
+    id: apiDevice._id,
+    deviceId: apiDevice.device_id || apiDevice.name,  // NOVO
+    bridgeId: apiDevice.bridge_id,
+    name: apiDevice.name || apiDevice.device_id,
+    // ...
+  };
+}
+```
+
+### 4. Corrigir Match no BridgeCard
+
+```typescript
+// src/components/dashboard/BridgeCard.tsx
 const sensorReadings = useMemo(() => {
-  if (devices.length === 0 && latestData.length === 0) return [];
-  
-  // Se temos devices, usar como base (garante que todos aparecem)
-  if (devices.length > 0) {
-    return devices.map(device => {
-      const telemetry = latestData.find(t => t.deviceId === device.id);
-      // ... mapear dados
-    });
-  }
-  
-  // Fallback para latestData se não tiver devices
-  return latestData.map(telemetry => {
-    // ... mapear dados
+  return devices.map(device => {
+    // Match usando deviceId (string) ao invés de id (ObjectId)
+    const telemetry = latestData.find(t => t.deviceId === device.deviceId);
+    // ...
   });
 }, [devices, latestData]);
 ```
 
-### 2. Status Baseado em 10 Minutos
-
-```typescript
-const TEN_MINUTES_MS = 10 * 60 * 1000;
-
-const calculateSensorStatus = (timestamp: string | undefined): 'online' | 'offline' => {
-  if (!timestamp) return 'offline';
-  return (Date.now() - new Date(timestamp).getTime()) < TEN_MINUTES_MS ? 'online' : 'offline';
-};
-```
-
-### 3. Tabela Simplificada (Sem Coluna Tipo)
-
-```tsx
-<TableHeader>
-  <TableRow className="bg-muted/50">
-    <TableHead className="text-xs h-8">Sensor</TableHead>
-    <TableHead className="text-xs h-8">Eixo</TableHead>
-    <TableHead className="text-xs h-8">Último Valor</TableHead>
-    <TableHead className="text-xs h-8">Referência</TableHead>
-    <TableHead className="text-xs h-8">Variação</TableHead>
-    <TableHead className="text-xs h-8">Status</TableHead>
-    <TableHead className="text-xs h-8">Atualizado</TableHead>
-  </TableRow>
-</TableHeader>
-```
-
-### 4. Footer com Contagem de Sensores Ativos
-
-```tsx
-<span>🔌 {activeSensorsCount}/{sensorReadings.length} sensores ativos</span>
-```
-
 ---
 
-## Fluxo de Carregamento
-
-```text
-1. BridgeCard monta
-   ├── useDevices(bridge.id) → HTTP busca devices (instantâneo)
-   └── useTelemetry(bridge.id) → HTTP busca telemetria
-
-2. Renderização Inicial (< 500ms)
-   ├── Tabela mostra TODOS devices do banco
-   ├── Valores preenchidos onde há telemetria
-   └── "-" e status "offline" onde não há dados
-
-3. WebSocket conecta
-   └── Atualiza valores em tempo real
-```
-
----
-
-## Arquivo a Modificar
+## Arquivos a Modificar
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/components/dashboard/BridgeCard.tsx` | Adicionar useDevices, lógica 10min, ajustar tabela |
+| `src/types/index.ts` | Adicionar `deviceId` na interface `Sensor` |
+| `src/lib/api/devices.ts` | Adicionar `device_id` na interface e mapeamento |
+| `src/components/dashboard/BridgeCard.tsx` | Usar `device.deviceId` para match |
 
+---
+
+## Fluxo Corrigido
+
+```text
+1. useDevices retorna:
+   { id: "68c...", deviceId: "Motiva_P1_S01", name: "Motiva_P1_S01" }
+
+2. useTelemetry retorna:
+   { deviceId: "Motiva_P1_S01", frequency: 3.50 }
+
+3. Match:
+   latestData.find(t => t.deviceId === device.deviceId)
+   // "Motiva_P1_S01" === "Motiva_P1_S01" ✓
+```
+
+---
+
+## Código do Match Corrigido
+
+```typescript
+// BridgeCard.tsx - dentro de sensorReadings useMemo
+if (devices.length > 0) {
+  return devices.map(device => {
+    // Match usando deviceId (string nome) ao invés de id (ObjectId)
+    const telemetry = latestData.find(t => 
+      t.deviceId === device.deviceId || t.deviceId === device.name
+    );
+    
+    return processReading(
+      device.deviceId,      // Usar deviceId para identificação
+      device.name,          // Nome para exibição
+      telemetry,
+      device.type
+    );
+  });
+}
+```
