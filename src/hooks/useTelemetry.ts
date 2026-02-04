@@ -36,20 +36,25 @@ export function useTelemetry(bridgeId?: string) {
   });
 
   // Combinar: HTTP inicial + WebSocket realtime
+  // Prioriza latestQuery (mais rápido) para mostrar valores imediatamente
   const combinedData = useMemo(() => {
-    const httpData = historyQuery.data || [];
     const latestModes = latestQuery.data || [];
+    const historyData = historyQuery.data || [];
 
-    const modeByDevice = new Map<string, string>();
-    latestModes.forEach((d) => {
-      if (d.modoOperacao) modeByDevice.set(d.deviceId, d.modoOperacao);
-    });
+    // Criar mapa de histórico para enriquecer depois
+    const historyByDevice = new Map<string, TelemetryData>();
+    historyData.forEach((h) => historyByDevice.set(h.deviceId, h));
 
-    let merged: TelemetryData[] = httpData.map((h) => ({
-      ...h,
-      modoOperacao: modeByDevice.get(h.deviceId) || h.modoOperacao,
-    }));
+    // Base: latestQuery (rápido) → mostra valores imediatamente
+    let merged: TelemetryData[] = latestModes.length > 0 
+      ? latestModes.map((latest) => ({
+          // Enriquecer com dados do histórico se disponível
+          ...(historyByDevice.get(latest.deviceId) || {}),
+          ...latest, // latest sobrescreve para garantir valor mais recente
+        }))
+      : historyData; // Fallback para histórico se latest vazio
 
+    // WebSocket: atualizar dados em tempo real
     realtimeData.forEach((rt) => {
       const idx = merged.findIndex((m) => m.deviceId === rt.deviceId);
       if (idx >= 0) {
