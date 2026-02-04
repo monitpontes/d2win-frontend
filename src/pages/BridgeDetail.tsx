@@ -474,6 +474,7 @@ export default function BridgeDetail() {
                               <LineChart data={
                                 timeSeriesData
                                   .filter(point => point.deviceId === currentSelectedSensor.id)
+                                  .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                                   .slice(-8)
                                   .map(point => ({
                                     time: format(new Date(point.timestamp), 'HH:mm:ss'),
