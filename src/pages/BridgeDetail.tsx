@@ -65,6 +65,50 @@ export default function BridgeDetail() {
 
   const canEdit = hasRole(['admin', 'gestor']);
 
+  // Build 3D sensor data from real telemetry - MUST be before any early returns
+  const bridge3DSensors: Bridge3DSensor[] = useMemo(() => {
+    if (!telemetryData || telemetryData.length === 0) {
+      // Fallback mock data if no telemetry
+      return Array.from({ length: 5 }, (_, i) => ({
+        id: `S${i + 1}`,
+        name: `Sensor S${i + 1}`,
+        position: `Longarina ${i + 1 <= 3 ? 'N' : 'S'}`,
+        type: i < 4 ? 'Frequência' as const : 'Aceleração' as const,
+        deviceType: i < 4 ? 'frequencia' as const : 'aceleracao' as const,
+        status: 'normal' as const,
+        frequency1: 3.5,
+        acceleration: 9.8,
+        timestamp: new Date().toISOString(),
+      }));
+    }
+
+    return telemetryData.map((telemetry, idx) => {
+      const isFrequency = telemetry.modoOperacao === 'frequencia';
+      const value = isFrequency ? telemetry.frequency : telemetry.acceleration?.z;
+      const sensorType = isFrequency ? 'frequency' : 'acceleration';
+      const statusResult = getSensorStatus(value, sensorType);
+      
+      // Map status to Bridge3DSensor expected format
+      const statusMap: Record<string, Bridge3DSensor['status']> = {
+        normal: 'normal',
+        attention: 'warning',
+        alert: 'critical',
+      };
+
+      return {
+        id: telemetry.deviceId || `S${idx + 1}`,
+        name: telemetry.deviceId || `Sensor S${idx + 1}`,
+        position: `Posição ${idx + 1}`,
+        type: isFrequency ? 'Frequência' as const : 'Aceleração' as const,
+        deviceType: isFrequency ? 'frequencia' as const : 'aceleracao' as const,
+        status: statusMap[statusResult] || 'normal',
+        frequency1: telemetry.frequency,
+        acceleration: telemetry.acceleration?.z,
+        timestamp: telemetry.timestamp,
+      };
+    });
+  }, [telemetryData]);
+
   // Loading state
   if (isLoadingBridge) {
     return (
@@ -188,50 +232,6 @@ export default function BridgeDetail() {
     { id: 3, name: 'Câmera 3', location: 'Vão 3 - Vista lateral', image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=800' },
     { id: 4, name: 'Câmera 4', location: 'Vão 4 - Vista lateral', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800' },
   ];
-
-  // Build 3D sensor data from real telemetry
-  const bridge3DSensors: Bridge3DSensor[] = useMemo(() => {
-    if (!telemetryData || telemetryData.length === 0) {
-      // Fallback mock data if no telemetry
-      return Array.from({ length: 5 }, (_, i) => ({
-        id: `S${i + 1}`,
-        name: `Sensor S${i + 1}`,
-        position: `Longarina ${i + 1 <= 3 ? 'N' : 'S'}`,
-        type: i < 4 ? 'Frequência' as const : 'Aceleração' as const,
-        deviceType: i < 4 ? 'frequencia' as const : 'aceleracao' as const,
-        status: 'normal' as const,
-        frequency1: 3.5,
-        acceleration: 9.8,
-        timestamp: new Date().toISOString(),
-      }));
-    }
-
-    return telemetryData.map((telemetry, idx) => {
-      const isFrequency = telemetry.modoOperacao === 'frequencia';
-      const value = isFrequency ? telemetry.frequency : telemetry.acceleration?.z;
-      const sensorType = isFrequency ? 'frequency' : 'acceleration';
-      const statusResult = getSensorStatus(value, sensorType);
-      
-      // Map status to Bridge3DSensor expected format
-      const statusMap: Record<string, Bridge3DSensor['status']> = {
-        normal: 'normal',
-        attention: 'warning',
-        alert: 'critical',
-      };
-
-      return {
-        id: telemetry.deviceId || `S${idx + 1}`,
-        name: telemetry.deviceId || `Sensor S${idx + 1}`,
-        position: `Posição ${idx + 1}`,
-        type: isFrequency ? 'Frequência' as const : 'Aceleração' as const,
-        deviceType: isFrequency ? 'frequencia' as const : 'aceleracao' as const,
-        status: statusMap[statusResult] || 'normal',
-        frequency1: telemetry.frequency,
-        acceleration: telemetry.acceleration?.z,
-        timestamp: telemetry.timestamp,
-      };
-    });
-  }, [telemetryData]);
 
   return (
     <div className="flex-1 overflow-auto">
