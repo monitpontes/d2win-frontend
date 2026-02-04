@@ -1,60 +1,71 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { telemetryService, type TelemetryData } from '@/lib/api';
+import { useTelemetrySocket } from './useTelemetrySocket';
 
 export interface TelemetryHistoryData extends TelemetryData {
   // Extended fields for history
 }
 
 export function useTelemetry(bridgeId?: string) {
-  // Query for latest data - gives us modo_operacao for each device
+  // Socket para dados em tempo real
+  const { realtimeData, lastUpdate, isConnected } = useTelemetrySocket(bridgeId);
+
+  // HTTP para dados iniciais (modo_operacao)
   const latestQuery = useQuery({
     queryKey: ['telemetry', 'latest', bridgeId],
     queryFn: () => telemetryService.getLatestByBridge(bridgeId!),
     enabled: !!bridgeId,
-    refetchInterval: 30000, // Atualiza a cada 30s
-    staleTime: 10000,
+    staleTime: 60000, // Menos frequente - socket atualiza
   });
 
-  // Query for history data - gives us actual values from freq/accel arrays
+  // HTTP para histórico inicial
   const historyQuery = useQuery({
     queryKey: ['telemetry', 'history', bridgeId],
     queryFn: () => telemetryService.getHistoryByBridge(bridgeId!, { limit: 500 }),
     enabled: !!bridgeId,
-    staleTime: 60000, // Cache por 1 minuto
+    staleTime: 60000,
   });
 
-  // Combine data: modo_operacao from latest + values from history
+  // Combinar: HTTP inicial + WebSocket realtime
   const combinedData = useMemo(() => {
-    const historyData = historyQuery.data || [];
-    const latestDataRaw = latestQuery.data || [];
-    
-    // If we have no history, return latest data (may have null values)
-    if (historyData.length === 0) {
-      return latestDataRaw;
-    }
-    
-    // Create map of modo_operacao from latest endpoint
+    const httpData = historyQuery.data || [];
+    const latestModes = latestQuery.data || [];
+
+    // Criar mapa de modo_operacao do latest
     const modeByDevice = new Map<string, string>();
-    latestDataRaw.forEach(d => {
-      if (d.modoOperacao) {
-        modeByDevice.set(d.deviceId, d.modoOperacao);
-      }
+    latestModes.forEach((d) => {
+      if (d.modoOperacao) modeByDevice.set(d.deviceId, d.modoOperacao);
     });
-    
-    // Merge: use values from history but prefer modo_operacao from latest if available
-    return historyData.map(h => ({
+
+    // Merge HTTP data com modo correto
+    let merged: TelemetryData[] = httpData.map((h) => ({
       ...h,
       modoOperacao: modeByDevice.get(h.deviceId) || h.modoOperacao,
     }));
-  }, [latestQuery.data, historyQuery.data]);
+
+    // Sobrescrever com dados realtime (mais recentes)
+    realtimeData.forEach((rt) => {
+      const idx = merged.findIndex((m) => m.deviceId === rt.deviceId);
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...rt };
+      } else {
+        merged.push(rt);
+      }
+    });
+
+    return merged;
+  }, [latestQuery.data, historyQuery.data, realtimeData]);
 
   return {
     latestData: combinedData,
     historyData: historyQuery.data || [],
+    realtimeData,
     isLoadingLatest: latestQuery.isLoading,
     isLoadingHistory: historyQuery.isLoading,
     isLoading: latestQuery.isLoading || historyQuery.isLoading,
+    isConnected,
+    lastUpdate,
     refetchLatest: latestQuery.refetch,
     refetchHistory: historyQuery.refetch,
   };
