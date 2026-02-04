@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { companiesService } from '@/lib/api';
+import { companiesService, type CreateCompanyData } from '@/lib/api';
 import type { Company } from '@/types';
 import { toast } from 'sonner';
 
@@ -20,7 +20,7 @@ export function useCompanies() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; description?: string }) => 
+    mutationFn: (data: CreateCompanyData) => 
       companiesService.createCompany(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['companies'] });
@@ -32,7 +32,7 @@ export function useCompanies() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name?: string; description?: string } }) =>
+    mutationFn: ({ id, data }: { id: string; data: Partial<CreateCompanyData> }) =>
       companiesService.updateCompany(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['companies'] });

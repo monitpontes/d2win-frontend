@@ -135,19 +135,11 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
     };
   }, [latestData, bridge]);
 
-  // Real time series data for acceleration (eixo Z) from API + WebSocket
+  // Real time series data for acceleration from API + WebSocket
   const timeSeriesAcceleration = useMemo(() => {
     if (!timeSeriesData || timeSeriesData.length === 0) {
-      // Fallback mock only if no data
-      return Array.from({ length: 30 }, (_, i) => ({
-        date: `${String(i + 1).padStart(2, '0')}/01`,
-        valueX: 9.5 + Math.random() * 0.8,
-        valueY: 9.6 + Math.random() * 0.7,
-        valueZ: 9.7 + Math.random() * 0.9,
-        anomalyX: null,
-        anomalyY: null,
-        anomalyZ: null,
-      }));
+      // Retorna array vazio se não há dados (sem mock)
+      return [];
     }
 
     // Use real acceleration data
@@ -163,26 +155,27 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
         anomalyY: null,
         anomalyZ: d.severity === 'critical' ? d.value : null,
         device: d.deviceId,
+        axis: d.axis || 'z',
       }));
+  }, [timeSeriesData]);
+
+  // Detectar eixos disponíveis nos dados de aceleração
+  const availableAccelAxes = useMemo(() => {
+    if (!timeSeriesData?.length) return ['Z'];
+    
+    const axes = new Set<string>();
+    timeSeriesData
+      .filter(d => d.type === 'acceleration')
+      .forEach(d => axes.add((d.axis || 'z').toUpperCase()));
+    
+    return Array.from(axes).length > 0 ? Array.from(axes).sort() : ['Z'];
   }, [timeSeriesData]);
 
   // Real time series data for frequency from API + WebSocket
   const timeSeriesFrequency = useMemo(() => {
     if (!timeSeriesData || timeSeriesData.length === 0) {
-      // Fallback mock only if no data
-      return Array.from({ length: 30 }, (_, i) => ({
-        date: `${String(i + 1).padStart(2, '0')}/01`,
-        s1X: 3.5 + Math.random() * 0.5,
-        s1Z: 3.6 + Math.random() * 0.4,
-        s2X: 3.4 + Math.random() * 0.6,
-        s2Z: 3.5 + Math.random() * 0.5,
-        s3X: 3.3 + Math.random() * 0.5,
-        s3Z: 3.4 + Math.random() * 0.6,
-        s4X: 3.6 + Math.random() * 0.4,
-        s4Z: 3.7 + Math.random() * 0.5,
-        referenceX: 3.7,
-        referenceZ: 3.7,
-      }));
+      // Retorna array vazio se não há dados (sem mock)
+      return [];
     }
 
     // Group frequency data by timestamp for chart
@@ -204,11 +197,7 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
       row['referenceX'] = DEFAULT_THRESHOLDS.frequency.reference;
     });
 
-    const result = Array.from(byTimestamp.values());
-    return result.length > 0 ? result : Array.from({ length: 30 }, (_, i) => ({
-      date: `${String(i + 1).padStart(2, '0')}/01`,
-      s1Z: 3.6, referenceZ: 3.7,
-    }));
+    return Array.from(byTimestamp.values());
   }, [timeSeriesData]);
 
   // 24-hour data for anomaly modal
@@ -303,6 +292,15 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
 
   // Render acceleration chart with X/Y/Z or all
   const renderAccelerationChart = (height: number = 192) => {
+    // Se não há dados, mostrar mensagem
+    if (timeSeriesAcceleration.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-full text-muted-foreground text-sm" style={{ height }}>
+          Sem dados de aceleração disponíveis
+        </div>
+      );
+    }
+
     const showAll = accelAxisFilter === 'Todos';
     
     return (
@@ -313,17 +311,17 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
           <YAxis domain={[9.2, 11.2]} tick={{ fontSize: 9 }} label={{ value: `${metricFilter} Eixo ${accelAxisFilter} (m/s²)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <ReferenceLine y={DEFAULT_THRESHOLDS.acceleration.alert} stroke="hsl(220, 10%, 60%)" strokeDasharray="8 4" label={{ value: `Limite Alerta (${DEFAULT_THRESHOLDS.acceleration.alert})`, fontSize: 9, fill: 'hsl(220, 10%, 50%)' }} />
+          <ReferenceLine y={DEFAULT_THRESHOLDS.acceleration.alert} stroke="hsl(var(--muted-foreground))" strokeDasharray="8 4" label={{ value: `Limite Alerta (${DEFAULT_THRESHOLDS.acceleration.alert})`, fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} />
           <ReferenceLine y={DEFAULT_THRESHOLDS.acceleration.normal} stroke="hsl(var(--warning))" strokeDasharray="5 5" label={{ value: `Limite Atenção (${DEFAULT_THRESHOLDS.acceleration.normal})`, fontSize: 9, fill: 'hsl(var(--warning))' }} />
           
           {(showAll || accelAxisFilter === 'X') && (
-            <Line type="monotone" dataKey="valueX" stroke="hsl(220, 70%, 50%)" strokeWidth={1.5} dot={false} name="Eixo X" />
+            <Line type="monotone" dataKey="valueX" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={false} name="Eixo X" />
           )}
           {(showAll || accelAxisFilter === 'Y') && (
-            <Line type="monotone" dataKey="valueY" stroke="hsl(142, 76%, 36%)" strokeWidth={1.5} dot={false} name="Eixo Y" />
+            <Line type="monotone" dataKey="valueY" stroke="hsl(var(--chart-2))" strokeWidth={1.5} dot={false} name="Eixo Y" />
           )}
           {(showAll || accelAxisFilter === 'Z') && (
-            <Line type="monotone" dataKey="valueZ" stroke="hsl(38, 92%, 50%)" strokeWidth={1.5} dot={false} name="Eixo Z" />
+            <Line type="monotone" dataKey="valueZ" stroke="hsl(var(--chart-3))" strokeWidth={1.5} dot={false} name="Eixo Z" />
           )}
           
           {showAnomalies && (
@@ -355,6 +353,15 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
 
   // Render frequency chart with X/Z or all, showing multiple sensors
   const renderFrequencyChart = (height: number = 192) => {
+    // Se não há dados, mostrar mensagem
+    if (timeSeriesFrequency.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-full text-muted-foreground text-sm" style={{ height }}>
+          Sem dados de frequência disponíveis
+        </div>
+      );
+    }
+
     const showAll = freqAxisFilter === 'Todos';
     const axisKey = freqAxisFilter === 'Todos' ? 'Z' : freqAxisFilter;
     
@@ -366,21 +373,21 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
           <YAxis domain={[3.0, 4.5]} tick={{ fontSize: 9 }} label={{ value: `domFreq1 Eixo ${freqAxisFilter} (Hz)`, angle: -90, position: 'insideLeft', fontSize: 10 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <ReferenceLine y={DEFAULT_THRESHOLDS.frequency.reference} stroke="hsl(220, 10%, 60%)" strokeDasharray="5 5" label={{ value: `Referência (${DEFAULT_THRESHOLDS.frequency.reference} Hz)`, fontSize: 9 }} />
+          <ReferenceLine y={DEFAULT_THRESHOLDS.frequency.reference} stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" label={{ value: `Referência (${DEFAULT_THRESHOLDS.frequency.reference} Hz)`, fontSize: 9 }} />
           
           {showAll ? (
             <>
-              <Line type="monotone" dataKey="s1Z" stroke={sensorColors.S1} strokeWidth={1.5} dot={false} name="S1" />
-              <Line type="monotone" dataKey="s2Z" stroke={sensorColors.S2} strokeWidth={1.5} dot={false} name="S2" />
-              <Line type="monotone" dataKey="s3Z" stroke={sensorColors.S3} strokeWidth={1.5} dot={false} name="S3" />
-              <Line type="monotone" dataKey="s4Z" stroke={sensorColors.S4} strokeWidth={1.5} dot={false} name="S4" />
+              <Line type="monotone" dataKey="s1Z" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={false} name="S1" />
+              <Line type="monotone" dataKey="s2Z" stroke="hsl(var(--chart-2))" strokeWidth={1.5} dot={false} name="S2" />
+              <Line type="monotone" dataKey="s3Z" stroke="hsl(var(--chart-3))" strokeWidth={1.5} dot={false} name="S3" />
+              <Line type="monotone" dataKey="s4Z" stroke="hsl(var(--chart-4))" strokeWidth={1.5} dot={false} name="S4" />
             </>
           ) : (
             <>
-              <Line type="monotone" dataKey={`s1${axisKey}`} stroke={sensorColors.S1} strokeWidth={1.5} dot={false} name="S1" />
-              <Line type="monotone" dataKey={`s2${axisKey}`} stroke={sensorColors.S2} strokeWidth={1.5} dot={false} name="S2" />
-              <Line type="monotone" dataKey={`s3${axisKey}`} stroke={sensorColors.S3} strokeWidth={1.5} dot={false} name="S3" />
-              <Line type="monotone" dataKey={`s4${axisKey}`} stroke={sensorColors.S4} strokeWidth={1.5} dot={false} name="S4" />
+              <Line type="monotone" dataKey={`s1${axisKey}`} stroke="hsl(var(--primary))" strokeWidth={1.5} dot={false} name="S1" />
+              <Line type="monotone" dataKey={`s2${axisKey}`} stroke="hsl(var(--chart-2))" strokeWidth={1.5} dot={false} name="S2" />
+              <Line type="monotone" dataKey={`s3${axisKey}`} stroke="hsl(var(--chart-3))" strokeWidth={1.5} dot={false} name="S3" />
+              <Line type="monotone" dataKey={`s4${axisKey}`} stroke="hsl(var(--chart-4))" strokeWidth={1.5} dot={false} name="S4" />
             </>
           )}
         </LineChart>
@@ -670,10 +677,10 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="X">X</SelectItem>
-                      <SelectItem value="Y">Y</SelectItem>
-                      <SelectItem value="Z">Z</SelectItem>
-                      <SelectItem value="Todos">Todos</SelectItem>
+                      {availableAccelAxes.includes('X') && <SelectItem value="X">X</SelectItem>}
+                      {availableAccelAxes.includes('Y') && <SelectItem value="Y">Y</SelectItem>}
+                      {availableAccelAxes.includes('Z') && <SelectItem value="Z">Z</SelectItem>}
+                      {availableAccelAxes.length > 1 && <SelectItem value="Todos">Todos</SelectItem>}
                     </SelectContent>
                   </Select>
                   <div className="flex border rounded-md overflow-hidden">

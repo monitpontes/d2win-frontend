@@ -27,14 +27,31 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { Company } from '@/types';
+import type { CreateCompanyData } from '@/lib/api';
 
 interface AdminSidebarProps {
   selectedCompanyId: string;
   onSelectCompany: (companyId: string) => void;
 }
+
+const emptyCompanyForm: CreateCompanyData = {
+  name: '',
+  description: '',
+  cnpj: '',
+  email: '',
+  phone: '',
+  address: '',
+  city: '',
+  state: '',
+  zipCode: '',
+  contactName: '',
+  contactEmail: '',
+  contactPhone: '',
+};
 
 export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSidebarProps) {
   const { companies, isLoading, createCompany, updateCompany, deleteCompany, isCreating, isUpdating, isDeleting } = useCompanies();
@@ -43,20 +60,24 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
   const [isEditCompanyOpen, setIsEditCompanyOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
-  const [companyName, setCompanyName] = useState('');
+  const [companyForm, setCompanyForm] = useState<CreateCompanyData>(emptyCompanyForm);
+
+  const resetForm = () => {
+    setCompanyForm(emptyCompanyForm);
+  };
 
   const handleAddCompany = () => {
-    if (companyName.trim()) {
-      createCompany({ name: companyName.trim() });
-      setCompanyName('');
+    if (companyForm.name.trim()) {
+      createCompany(companyForm);
+      resetForm();
       setIsAddCompanyOpen(false);
     }
   };
 
   const handleEditCompany = () => {
-    if (companyName.trim() && selectedCompany) {
-      updateCompany({ id: selectedCompany.id, data: { name: companyName.trim() } });
-      setCompanyName('');
+    if (companyForm.name.trim() && selectedCompany) {
+      updateCompany({ id: selectedCompany.id, data: companyForm });
+      resetForm();
       setSelectedCompany(null);
       setIsEditCompanyOpen(false);
     }
@@ -73,7 +94,20 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
   const openEditDialog = (company: Company, e: React.MouseEvent) => {
     e.stopPropagation();
     setSelectedCompany(company);
-    setCompanyName(company.name);
+    setCompanyForm({
+      name: company.name,
+      description: company.description || '',
+      cnpj: company.cnpj || '',
+      email: company.email || '',
+      phone: company.phone || '',
+      address: company.address || '',
+      city: company.city || '',
+      state: company.state || '',
+      zipCode: company.zipCode || '',
+      contactName: company.contactName || '',
+      contactEmail: company.contactEmail || '',
+      contactPhone: company.contactPhone || '',
+    });
     setIsEditCompanyOpen(true);
   };
 
@@ -82,6 +116,148 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
     setSelectedCompany(company);
     setIsDeleteDialogOpen(true);
   };
+
+  const updateField = (field: keyof CreateCompanyData, value: string) => {
+    setCompanyForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Formulário compartilhado para criar/editar empresa
+  const CompanyFormContent = () => (
+    <Tabs defaultValue="info" className="w-full">
+      <TabsList className="grid w-full grid-cols-3">
+        <TabsTrigger value="info">Informações</TabsTrigger>
+        <TabsTrigger value="contact">Contato</TabsTrigger>
+        <TabsTrigger value="address">Endereço</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="info" className="space-y-4 mt-4">
+        <div className="space-y-2">
+          <Label htmlFor="company-name">Nome da Empresa *</Label>
+          <Input
+            id="company-name"
+            value={companyForm.name}
+            onChange={(e) => updateField('name', e.target.value)}
+            placeholder="Nome da empresa"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="company-cnpj">CNPJ</Label>
+          <Input
+            id="company-cnpj"
+            value={companyForm.cnpj}
+            onChange={(e) => updateField('cnpj', e.target.value)}
+            placeholder="00.000.000/0000-00"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="company-description">Descrição</Label>
+          <Input
+            id="company-description"
+            value={companyForm.description}
+            onChange={(e) => updateField('description', e.target.value)}
+            placeholder="Descrição da empresa"
+          />
+        </div>
+      </TabsContent>
+
+      <TabsContent value="contact" className="space-y-4 mt-4">
+        <div className="space-y-2">
+          <Label htmlFor="company-email">E-mail Corporativo</Label>
+          <Input
+            id="company-email"
+            type="email"
+            value={companyForm.email}
+            onChange={(e) => updateField('email', e.target.value)}
+            placeholder="contato@empresa.com"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="company-phone">Telefone</Label>
+          <Input
+            id="company-phone"
+            value={companyForm.phone}
+            onChange={(e) => updateField('phone', e.target.value)}
+            placeholder="(00) 0000-0000"
+          />
+        </div>
+        <div className="border-t pt-4 mt-4">
+          <p className="text-sm font-medium mb-3">Contato Responsável</p>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="contact-name">Nome</Label>
+              <Input
+                id="contact-name"
+                value={companyForm.contactName}
+                onChange={(e) => updateField('contactName', e.target.value)}
+                placeholder="Nome do responsável"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="contact-email">E-mail</Label>
+              <Input
+                id="contact-email"
+                type="email"
+                value={companyForm.contactEmail}
+                onChange={(e) => updateField('contactEmail', e.target.value)}
+                placeholder="responsavel@empresa.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="contact-phone">Telefone</Label>
+              <Input
+                id="contact-phone"
+                value={companyForm.contactPhone}
+                onChange={(e) => updateField('contactPhone', e.target.value)}
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+          </div>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="address" className="space-y-4 mt-4">
+        <div className="space-y-2">
+          <Label htmlFor="company-address">Endereço</Label>
+          <Input
+            id="company-address"
+            value={companyForm.address}
+            onChange={(e) => updateField('address', e.target.value)}
+            placeholder="Rua, número, complemento"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label htmlFor="company-city">Cidade</Label>
+            <Input
+              id="company-city"
+              value={companyForm.city}
+              onChange={(e) => updateField('city', e.target.value)}
+              placeholder="Cidade"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="company-state">Estado</Label>
+            <Input
+              id="company-state"
+              value={companyForm.state}
+              onChange={(e) => updateField('state', e.target.value)}
+              placeholder="UF"
+              maxLength={2}
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="company-zipcode">CEP</Label>
+          <Input
+            id="company-zipcode"
+            value={companyForm.zipCode}
+            onChange={(e) => updateField('zipCode', e.target.value)}
+            placeholder="00000-000"
+          />
+        </div>
+      </TabsContent>
+    </Tabs>
+  );
 
   return (
     <div className="w-52 min-h-screen border-r bg-card flex flex-col">
@@ -97,7 +273,7 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
             size="icon" 
             className="h-6 w-6"
             onClick={() => {
-              setCompanyName('');
+              resetForm();
               setIsAddCompanyOpen(true);
             }}
           >
@@ -139,7 +315,7 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
                       ? "text-primary-foreground/70"
                       : "text-muted-foreground"
                   )}>
-                    ID: {company.id.slice(-6)}
+                    {company.cnpj || `ID: ${company.id.slice(-6)}`}
                   </p>
                 </div>
                 
@@ -180,27 +356,17 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
 
       {/* Add Company Dialog */}
       <Dialog open={isAddCompanyOpen} onOpenChange={setIsAddCompanyOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Nova Empresa</DialogTitle>
-            <DialogDescription>Adicione uma nova empresa ao sistema.</DialogDescription>
+            <DialogDescription>Cadastre uma nova empresa no sistema.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="company-name">Nome da Empresa</Label>
-              <Input
-                id="company-name"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="Nome da empresa"
-              />
-            </div>
-          </div>
+          <CompanyFormContent />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddCompanyOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleAddCompany} disabled={isCreating}>
+            <Button onClick={handleAddCompany} disabled={isCreating || !companyForm.name.trim()}>
               {isCreating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Adicionar
             </Button>
@@ -210,27 +376,17 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
 
       {/* Edit Company Dialog */}
       <Dialog open={isEditCompanyOpen} onOpenChange={setIsEditCompanyOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Editar Empresa</DialogTitle>
             <DialogDescription>Atualize as informações da empresa.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-company-name">Nome da Empresa</Label>
-              <Input
-                id="edit-company-name"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="Nome da empresa"
-              />
-            </div>
-          </div>
+          <CompanyFormContent />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditCompanyOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleEditCompany} disabled={isUpdating}>
+            <Button onClick={handleEditCompany} disabled={isUpdating || !companyForm.name.trim()}>
               {isUpdating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Salvar
             </Button>
