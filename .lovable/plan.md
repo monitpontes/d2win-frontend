@@ -1,101 +1,95 @@
 
-# Plano: Corrigir Match entre Devices e Telemetria
+# Plano: Priorizar Dados Iniciais do Endpoint Latest
 
 ## Problema Identificado
 
-O match entre devices e telemetria está falhando porque:
+O `useTelemetry` está usando `historyQuery.data` como base para combinar dados (linha 40), mas este endpoint é mais lento. Enquanto isso, `latestQuery.data` retorna mais rápido e já contém os últimos valores de cada sensor.
 
-| Sistema | Campo Usado | Valor |
-|---------|-------------|-------|
-| Devices (atual) | `id` = `_id` | `68c8507fca1f72aed1c22fcf` |
-| Telemetria | `deviceId` = `device_id` | `"Motiva_P1_S01"` |
-
-A comparação `latestData.find(t => t.deviceId === device.id)` nunca encontra match porque compara ObjectId com string nome.
-
-## Estrutura Real do Banco (conforme imagens)
-
-**Devices:**
-```json
-{
-  "_id": ObjectId("68c8507fca1f72aed1c22fcf"),
-  "device_id": "Motiva_P1_S03",  // <-- Usado para match
-  "name": "Motiva_P1_S03",       // <-- Exibição
-  "bridge_id": ObjectId("..."),
-  "modo_operacao": "frequencia"
-}
+**Fluxo atual (problemático):**
+```text
+1. Página carrega
+2. latestQuery carrega (rápido) → mas não é usado como base
+3. historyQuery carrega (lento) → usado como base  
+4. Até historyQuery carregar → tabela mostra "-"
 ```
 
-**Telemetria:**
-```json
-{
-  "device_id": "Motiva_P1_S01",  // <-- Match via este campo
-  "peaks": [...],
-  "status": "atividade_detectada"
-}
+## Solução
+
+Alterar a lógica de `combinedData` para usar **latestQuery como base primária**, com historyQuery como fallback:
+
+```text
+1. Se latestQuery.data existe → usar como base (valores aparecem rápido)
+2. Depois historyQuery carregar → enriquecer com dados históricos
+3. WebSocket → atualizar em tempo real
 ```
 
 ---
 
-## Solução
+## Alterações no `useTelemetry.ts`
 
-### 1. Atualizar Interface ApiDevice
-
-Adicionar campo `device_id` que é o identificador string usado pela telemetria:
-
+### Antes (linha 39-62):
 ```typescript
-// src/lib/api/devices.ts
-export interface ApiDevice {
-  _id: string;
-  device_id: string;  // NOVO: "Motiva_P1_S03"
-  bridge_id: string;
-  company_id: string;
-  type: SensorType;
-  name: string;
-  // ...
-}
+const combinedData = useMemo(() => {
+  const httpData = historyQuery.data || [];         // ← Lento como base
+  const latestModes = latestQuery.data || [];       // ← Rápido ignorado
+
+  // ... merge logic usando httpData como base
+}, [latestQuery.data, historyQuery.data, realtimeData]);
 ```
 
-### 2. Atualizar Interface Sensor
-
-Adicionar campo `deviceId` para guardar o identificador string:
-
+### Depois:
 ```typescript
-// src/types/index.ts
-export interface Sensor {
-  id: string;        // ObjectId do MongoDB
-  deviceId: string;  // NOVO: "Motiva_P1_S03" para match com telemetria
-  bridgeId: string;
-  name: string;
-  // ...
-}
-```
+const combinedData = useMemo(() => {
+  // Priorizar latestQuery (mais rápido) como base
+  const latestModes = latestQuery.data || [];
+  const historyData = historyQuery.data || [];
 
-### 3. Atualizar Mapeamento
+  // Criar mapa de histórico para enriquecer depois
+  const historyByDevice = new Map<string, TelemetryData>();
+  historyData.forEach((h) => historyByDevice.set(h.deviceId, h));
 
-```typescript
-// src/lib/api/devices.ts
-export function mapApiDeviceToSensor(apiDevice: ApiDevice): Sensor {
-  return {
-    id: apiDevice._id,
-    deviceId: apiDevice.device_id || apiDevice.name,  // NOVO
-    bridgeId: apiDevice.bridge_id,
-    name: apiDevice.name || apiDevice.device_id,
-    // ...
-  };
-}
-```
+  // Base: latestQuery (rápido) → mostra valores imediatamente
+  let merged: TelemetryData[] = latestModes.length > 0 
+    ? latestModes.map((latest) => ({
+        ...latest,
+        // Enriquecer com dados do histórico se disponível
+        ...(historyByDevice.get(latest.deviceId) || {}),
+        ...latest, // latest sobrescreve para garantir valor mais recente
+      }))
+    : historyData; // Fallback para histórico se latest vazio
 
-### 4. Corrigir Match no BridgeCard
-
-```typescript
-// src/components/dashboard/BridgeCard.tsx
-const sensorReadings = useMemo(() => {
-  return devices.map(device => {
-    // Match usando deviceId (string) ao invés de id (ObjectId)
-    const telemetry = latestData.find(t => t.deviceId === device.deviceId);
-    // ...
+  // WebSocket: atualizar dados em tempo real
+  realtimeData.forEach((rt) => {
+    const idx = merged.findIndex((m) => m.deviceId === rt.deviceId);
+    if (idx >= 0) {
+      merged[idx] = { ...merged[idx], ...rt };
+    } else {
+      merged.push(rt);
+    }
   });
-}, [devices, latestData]);
+
+  return merged;
+}, [latestQuery.data, historyQuery.data, realtimeData]);
+```
+
+---
+
+## Fluxo Corrigido
+
+```text
+Timeline
+─────────────────────────────────────────────────────►
+   0ms         200ms           500ms           1000ms+
+    │            │                │                │
+    │            ▼                │                ▼
+    │   latestQuery retorna       │       historyQuery retorna
+    │   → Tabela mostra valores   │       → Dados históricos disponíveis
+    │                             │                │
+    └─────────────────────────────┴────────────────┘
+                      │
+                      ▼
+              WebSocket atualiza
+              → Dados em tempo real
 ```
 
 ---
@@ -104,45 +98,13 @@ const sensorReadings = useMemo(() => {
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/types/index.ts` | Adicionar `deviceId` na interface `Sensor` |
-| `src/lib/api/devices.ts` | Adicionar `device_id` na interface e mapeamento |
-| `src/components/dashboard/BridgeCard.tsx` | Usar `device.deviceId` para match |
+| `src/hooks/useTelemetry.ts` | Priorizar `latestQuery.data` como base no `combinedData` |
 
 ---
 
-## Fluxo Corrigido
+## Benefícios
 
-```text
-1. useDevices retorna:
-   { id: "68c...", deviceId: "Motiva_P1_S01", name: "Motiva_P1_S01" }
-
-2. useTelemetry retorna:
-   { deviceId: "Motiva_P1_S01", frequency: 3.50 }
-
-3. Match:
-   latestData.find(t => t.deviceId === device.deviceId)
-   // "Motiva_P1_S01" === "Motiva_P1_S01" ✓
-```
-
----
-
-## Código do Match Corrigido
-
-```typescript
-// BridgeCard.tsx - dentro de sensorReadings useMemo
-if (devices.length > 0) {
-  return devices.map(device => {
-    // Match usando deviceId (string nome) ao invés de id (ObjectId)
-    const telemetry = latestData.find(t => 
-      t.deviceId === device.deviceId || t.deviceId === device.name
-    );
-    
-    return processReading(
-      device.deviceId,      // Usar deviceId para identificação
-      device.name,          // Nome para exibição
-      telemetry,
-      device.type
-    );
-  });
-}
-```
+1. **Carregamento instantâneo**: Tabela mostra valores assim que `latestQuery` retorna (~200ms)
+2. **Sem valores vazios**: Usuário não vê "-" durante o carregamento
+3. **Histórico preservado**: Quando `historyQuery` carrega, enriquece os dados
+4. **WebSocket continua funcionando**: Atualizações em tempo real não mudam
