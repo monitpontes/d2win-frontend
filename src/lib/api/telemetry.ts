@@ -6,6 +6,9 @@ export interface TelemetryData {
   bridgeId: string;
   timestamp: string;
   frequency?: number;
+  frequency2?: number;
+  magnitude1?: number;
+  magnitude2?: number;
   acceleration?: { x: number; y: number; z: number };
   modoOperacao?: string;
   status?: string;
@@ -72,6 +75,7 @@ interface ApiHistoryResponse {
 
 function mapApiDeviceToTelemetry(device: ApiDeviceTelemetry, bridgeId: string): TelemetryData {
   const isFrequency = device.modo_operacao === 'frequencia';
+  const peaks = device.freq?.peaks || [];
   
   return {
     deviceId: device.device_id,
@@ -79,10 +83,11 @@ function mapApiDeviceToTelemetry(device: ApiDeviceTelemetry, bridgeId: string): 
     timestamp: device.last_seen,
     modoOperacao: device.modo_operacao,
     status: device.status,
-    // Extract frequency from peaks if available
-    frequency: isFrequency && device.freq?.peaks?.[0]?.f 
-      ? device.freq.peaks[0].f 
-      : undefined,
+    // Extract frequency and magnitude from peaks
+    frequency: peaks[0]?.f,
+    magnitude1: peaks[0]?.mag,
+    frequency2: peaks[1]?.f,
+    magnitude2: peaks[1]?.mag,
     // Extract acceleration Z value if available
     acceleration: !isFrequency && device.accel?.value !== undefined
       ? { x: 0, y: 0, z: device.accel.value }

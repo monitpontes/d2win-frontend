@@ -53,7 +53,7 @@ export default function BridgeDetail() {
   // Use API to fetch bridge data
   const { bridge, isLoading: isLoadingBridge } = useBridge(id);
   const { devices: sensors, isLoading: isLoadingSensors } = useDevices(undefined, id);
-  const { latestData: telemetryData, isLoading: isLoadingTelemetry } = useTelemetry(id);
+  const { latestData: telemetryData, timeSeriesData, isLoading: isLoadingTelemetry } = useTelemetry(id);
   
   // Placeholder data for features not yet connected to API
   const events: BridgeEvent[] = [];
@@ -66,9 +66,54 @@ export default function BridgeDetail() {
   const canEdit = hasRole(['admin', 'gestor']);
 
   // Build 3D sensor data from real telemetry - MUST be before any early returns
+  // Cross-reference sensors from database with telemetry data
   const bridge3DSensors: Bridge3DSensor[] = useMemo(() => {
+    // Create telemetry map by deviceId
+    const telemetryByDevice = new Map(
+      telemetryData.map(t => [t.deviceId, t])
+    );
+
+    // Map status to Bridge3DSensor expected format
+    const statusMap: Record<string, Bridge3DSensor['status']> = {
+      normal: 'normal',
+      attention: 'warning',
+      alert: 'critical',
+      warning: 'warning',
+      critical: 'critical',
+    };
+
+    // If we have sensors from database, use them as base (preserves names)
+    if (sensors.length > 0) {
+      return sensors.map((sensor, idx) => {
+        // Find matching telemetry by deviceId or name
+        const telemetry = telemetryByDevice.get(sensor.deviceId) || 
+                          telemetryByDevice.get(sensor.name);
+        
+        const isFrequency = sensor.type === 'frequency' || 
+                            telemetry?.modoOperacao === 'frequencia';
+        const value = isFrequency ? telemetry?.frequency : telemetry?.acceleration?.z;
+        const sensorType = isFrequency ? 'frequency' : 'acceleration';
+        const statusResult = getSensorStatus(value, sensorType);
+        
+        return {
+          id: sensor.deviceId || sensor.name,
+          name: sensor.name,  // Name from database
+          position: `Viga ${idx + 1}`,
+          type: isFrequency ? 'Frequência' as const : 'Aceleração' as const,
+          deviceType: isFrequency ? 'frequencia' as const : 'aceleracao' as const,
+          status: statusMap[statusResult] || statusMap[telemetry?.status || ''] || 'normal',
+          frequency1: telemetry?.frequency,
+          magnitude1: telemetry?.magnitude1,
+          frequency2: telemetry?.frequency2,
+          magnitude2: telemetry?.magnitude2,
+          acceleration: telemetry?.acceleration?.z,
+          timestamp: telemetry?.timestamp,
+        };
+      });
+    }
+
+    // Fallback: use telemetry directly if no sensors in database
     if (!telemetryData || telemetryData.length === 0) {
-      // Fallback mock data if no telemetry
       return Array.from({ length: 5 }, (_, i) => ({
         id: `S${i + 1}`,
         name: `Sensor S${i + 1}`,
@@ -87,27 +132,23 @@ export default function BridgeDetail() {
       const value = isFrequency ? telemetry.frequency : telemetry.acceleration?.z;
       const sensorType = isFrequency ? 'frequency' : 'acceleration';
       const statusResult = getSensorStatus(value, sensorType);
-      
-      // Map status to Bridge3DSensor expected format
-      const statusMap: Record<string, Bridge3DSensor['status']> = {
-        normal: 'normal',
-        attention: 'warning',
-        alert: 'critical',
-      };
 
       return {
         id: telemetry.deviceId || `S${idx + 1}`,
-        name: telemetry.deviceId || `Sensor S${idx + 1}`,
-        position: `Posição ${idx + 1}`,
+        name: telemetry.deviceId || `Sensor S${idx + 1}`,  // deviceId as name
+        position: `Viga ${idx + 1}`,
         type: isFrequency ? 'Frequência' as const : 'Aceleração' as const,
         deviceType: isFrequency ? 'frequencia' as const : 'aceleracao' as const,
         status: statusMap[statusResult] || 'normal',
         frequency1: telemetry.frequency,
+        magnitude1: telemetry.magnitude1,
+        frequency2: telemetry.frequency2,
+        magnitude2: telemetry.magnitude2,
         acceleration: telemetry.acceleration?.z,
         timestamp: telemetry.timestamp,
       };
     });
-  }, [telemetryData]);
+  }, [sensors, telemetryData]);
 
   // Loading state
   if (isLoadingBridge) {
@@ -337,11 +378,11 @@ export default function BridgeDetail() {
                           {/* Info rows - one per line */}
                           <div className="flex justify-between items-center py-1 border-b">
                             <span className="text-muted-foreground text-sm">Nome:</span>
-                            <span className="font-medium text-sm">{bridge.id.replace('bridge-', 'A-P')}-{selectedSensor3D.id}</span>
+                            <span className="font-medium text-sm">{selectedSensor3D.name}</span>
                           </div>
                           <div className="flex justify-between items-center py-1 border-b">
                             <span className="text-muted-foreground text-sm">Posição:</span>
-                            <span className="font-medium text-sm text-primary">Posição {selectedSensor3D.id}</span>
+                            <span className="font-medium text-sm text-primary">{selectedSensor3D.position}</span>
                           </div>
                           <div className="flex justify-between items-center py-1 border-b">
                             <span className="text-muted-foreground text-sm">Tipo:</span>
@@ -374,20 +415,20 @@ export default function BridgeDetail() {
                           {selectedSensor3D.deviceType === 'frequencia' && (
                             <>
                               <div className="flex justify-between items-center py-1 border-b">
-                                <span className="text-muted-foreground text-sm">Frequência Eixo X:</span>
-                                <span className="font-bold text-sm">{selectedSensor3D.frequency1?.toFixed(2)} Hz</span>
+                                <span className="text-muted-foreground text-sm">Frequência Pico 1:</span>
+                                <span className="font-bold text-sm">{selectedSensor3D.frequency1?.toFixed(2) || '-'} Hz</span>
                               </div>
                               <div className="flex justify-between items-center py-1 border-b">
-                                <span className="text-muted-foreground text-sm">Magnitude Pico X:</span>
-                                <span className="font-medium text-sm">{((selectedSensor3D.frequency1 || 3.5) * 5.5).toFixed(2)}</span>
+                                <span className="text-muted-foreground text-sm">Magnitude Pico 1:</span>
+                                <span className="font-medium text-sm">{selectedSensor3D.magnitude1?.toFixed(2) || '-'}</span>
                               </div>
                               <div className="flex justify-between items-center py-1 border-b">
-                                <span className="text-muted-foreground text-sm">Frequência Eixo Z:</span>
-                                <span className="font-bold text-sm">{selectedSensor3D.frequency2?.toFixed(2)} Hz</span>
+                                <span className="text-muted-foreground text-sm">Frequência Pico 2:</span>
+                                <span className="font-bold text-sm">{selectedSensor3D.frequency2?.toFixed(2) || '-'} Hz</span>
                               </div>
                               <div className="flex justify-between items-center py-1 border-b">
-                                <span className="text-muted-foreground text-sm">Magnitude Pico Z:</span>
-                                <span className="font-medium text-sm">{((selectedSensor3D.frequency2 || 3.2) * 6.8).toFixed(2)}</span>
+                                <span className="text-muted-foreground text-sm">Magnitude Pico 2:</span>
+                                <span className="font-medium text-sm">{selectedSensor3D.magnitude2?.toFixed(2) || '-'}</span>
                               </div>
                             </>
                           )}
@@ -395,57 +436,49 @@ export default function BridgeDetail() {
                           {selectedSensor3D.deviceType === 'aceleracao' && (
                             <>
                               <div className="flex justify-between items-center py-1 border-b">
-                                <span className="text-muted-foreground text-sm">Aceleração Eixo X:</span>
-                                <span className="font-bold text-sm">{selectedSensor3D.acceleration?.toFixed(2)} m/s²</span>
-                              </div>
-                              <div className="flex justify-between items-center py-1 border-b">
-                                <span className="text-muted-foreground text-sm">Aceleração Eixo Z:</span>
-                                <span className="font-bold text-sm">{((selectedSensor3D.acceleration || 0.15) * 1.2).toFixed(2)} m/s²</span>
+                                <span className="text-muted-foreground text-sm">Aceleração Z:</span>
+                                <span className="font-bold text-sm">{selectedSensor3D.acceleration?.toFixed(2) || '-'} m/s²</span>
                               </div>
                             </>
                           )}
                           
                           <div className="flex justify-between items-center py-1">
                             <span className="text-muted-foreground text-sm">Timestamp:</span>
-                            <span className="font-mono text-xs">{selectedSensor3D.timestamp}</span>
+                            <span className="font-mono text-xs">
+                              {selectedSensor3D.timestamp 
+                                ? format(new Date(selectedSensor3D.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })
+                                : '-'
+                              }
+                            </span>
                           </div>
                         </div>
 
-                        {/* Sensor Chart - Last 8 readings */}
+                        {/* Sensor Chart - Last 8 readings from real timeSeriesData */}
                         <div className="rounded-lg border bg-card p-4">
                           <h5 className="font-medium text-sm mb-2">
                             {selectedSensor3D.deviceType === 'frequencia' 
-                              ? 'Frequência Eixos X e Z - Últimas 8 Leituras'
-                              : 'Aceleração Eixos X e Z - Últimas 8 Leituras'
+                              ? 'Frequência - Últimas Leituras'
+                              : 'Aceleração - Últimas Leituras'
                             }
                           </h5>
                           <div className="h-36">
                             <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={Array.from({ length: 8 }, (_, i) => {
-                                const baseTime = new Date();
-                                baseTime.setMinutes(baseTime.getMinutes() - (7 - i) * 5);
-                                const timeStr = `${baseTime.getHours().toString().padStart(2, '0')}:${baseTime.getMinutes().toString().padStart(2, '0')}:${baseTime.getSeconds().toString().padStart(2, '0')}`;
-                                
-                                if (selectedSensor3D.deviceType === 'frequencia') {
-                                  return {
-                                    time: timeStr,
-                                    eixoX: (selectedSensor3D.frequency1 || 3.5) + (Math.random() - 0.5) * 0.3,
-                                    eixoZ: (selectedSensor3D.frequency2 || 3.2) + (Math.random() - 0.5) * 0.2,
-                                  };
-                                } else {
-                                  return {
-                                    time: timeStr,
-                                    eixoX: (selectedSensor3D.acceleration || 0.15) + (Math.random() - 0.5) * 0.05,
-                                    eixoZ: ((selectedSensor3D.acceleration || 0.15) * 1.2) + (Math.random() - 0.5) * 0.05,
-                                  };
-                                }
-                              })}>
+                              <LineChart data={
+                                timeSeriesData
+                                  .filter(point => point.deviceId === selectedSensor3D.id)
+                                  .slice(-8)
+                                  .map(point => ({
+                                    time: format(new Date(point.timestamp), 'HH:mm:ss'),
+                                    value: point.value,
+                                  }))
+                              }>
                                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
                                 <XAxis dataKey="time" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={40} />
                                 <YAxis 
                                   tick={{ fontSize: 9 }} 
-                                  domain={selectedSensor3D.deviceType === 'frequencia' ? [2.8, 4.0] : [0, 0.5]} 
-                                  width={35}
+                                  domain={['auto', 'auto']} 
+                                  width={45}
+                                  tickFormatter={(v) => v.toFixed(1)}
                                 />
                                 <Tooltip 
                                   contentStyle={{ fontSize: 11 }}
@@ -453,28 +486,16 @@ export default function BridgeDetail() {
                                     selectedSensor3D.deviceType === 'frequencia' 
                                       ? `${value.toFixed(2)} Hz` 
                                       : `${value.toFixed(3)} m/s²`,
-                                    ''
+                                    selectedSensor3D.deviceType === 'frequencia' ? 'Frequência' : 'Aceleração'
                                   ]}
-                                />
-                                <Legend 
-                                  wrapperStyle={{ fontSize: 10 }}
-                                  formatter={(value) => value === 'eixoX' ? 'Eixo X' : 'Eixo Z'}
                                 />
                                 <Line 
                                   type="monotone" 
-                                  dataKey="eixoX" 
+                                  dataKey="value" 
                                   stroke="hsl(var(--primary))" 
                                   strokeWidth={2} 
                                   dot={{ r: 3, fill: 'hsl(var(--primary))' }}
-                                  name="eixoX"
-                                />
-                                <Line 
-                                  type="monotone" 
-                                  dataKey="eixoZ" 
-                                  stroke="hsl(142, 76%, 36%)" 
-                                  strokeWidth={2} 
-                                  dot={{ r: 3, fill: 'hsl(142, 76%, 36%)' }}
-                                  name="eixoZ"
+                                  name="value"
                                 />
                               </LineChart>
                             </ResponsiveContainer>
