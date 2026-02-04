@@ -30,10 +30,15 @@ export interface ApiDevice {
 
 // Mapeia dispositivo da API para formato do frontend
 export function mapApiDeviceToSensor(apiDevice: ApiDevice): Sensor {
+  // Tratar bridge_id como objeto populado ou string
+  const bridgeId = typeof apiDevice.bridge_id === 'object' && apiDevice.bridge_id !== null
+    ? (apiDevice.bridge_id as any)._id || String(apiDevice.bridge_id)
+    : apiDevice.bridge_id;
+
   return {
     id: apiDevice._id,
     deviceId: apiDevice.device_id || apiDevice.name, // String ID for telemetry matching
-    bridgeId: apiDevice.bridge_id,
+    bridgeId: bridgeId,
     type: apiDevice.type,
     name: apiDevice.name || apiDevice.device_id,
     status: apiDevice.status || 'offline',

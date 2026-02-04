@@ -4,6 +4,7 @@ import { useCompanies } from '@/hooks/useCompanies';
 import { useBridges } from '@/hooks/useBridges';
 import { useUsers } from '@/hooks/useUsers';
 import { useDevices } from '@/hooks/useDevices';
+import { useTelemetryByCompany } from '@/hooks/useTelemetry';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -54,8 +55,18 @@ export default function Admin() {
   const { bridges: companyBridges, isLoading: isLoadingBridges, createBridge, isCreating: isCreatingBridge } = useBridges(selectedCompanyId || undefined);
   const { users: allUsers, isLoading: isLoadingUsers, createUser, isCreating: isCreatingUser, deleteUser } = useUsers(selectedCompanyId || undefined);
   const { devices: companyDevices, isLoading: isLoadingDevices, createDevice, isCreating: isCreatingDevice } = useDevices(selectedCompanyId || undefined);
+  const { data: telemetryData } = useTelemetryByCompany(selectedCompanyId || undefined);
 
   const selectedCompany = companies.find(c => c.id === selectedCompanyId);
+
+  // Mapa de status real por deviceId baseado em telemetria
+  const telemetryStatusMap = useMemo(() => {
+    const map = new Map<string, string>();
+    telemetryData?.forEach(t => {
+      map.set(t.deviceId, t.status || 'offline');
+    });
+    return map;
+  }, [telemetryData]);
 
   // Set initial company when companies load
   useMemo(() => {
@@ -515,9 +526,9 @@ export default function Admin() {
                           return (
                             <TableRow key={device.id}>
                               <TableCell className="font-medium text-primary">{device.name}</TableCell>
-                              <TableCell className="text-primary">{bridge?.name || (device.bridgeId ? String(device.bridgeId).slice(-8) : 'N/A')}</TableCell>
+                              <TableCell className="text-primary">{bridge?.name || (typeof device.bridgeId === 'string' ? device.bridgeId.slice(-8) : 'N/A')}</TableCell>
                               <TableCell>{device.type === 'frequency' ? 'Frequência' : 'Aceleração'}</TableCell>
-                              <TableCell>{getStatusBadge(device.status)}</TableCell>
+                              <TableCell>{getStatusBadge(telemetryStatusMap.get(device.deviceId) || device.status)}</TableCell>
                               <TableCell>{new Date(device.lastReading.timestamp).toLocaleString('pt-BR')}</TableCell>
                               <TableCell className="text-right">
                                 <div className="flex justify-end gap-1">

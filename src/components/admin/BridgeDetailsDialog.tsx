@@ -3,8 +3,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -20,13 +18,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import type { Bridge, StructuralStatus, OperationalCriticality, BridgeTypology } from '@/types';
-import { structuralStatusLabels } from '@/types';
 import { useBridges } from '@/hooks/useBridges';
-import { useDevices } from '@/hooks/useDevices';
-import { useUsers } from '@/hooks/useUsers';
-import { Settings, Users, Cpu, MapPin, Save, Loader2 } from 'lucide-react';
+import { Settings, MapPin, Save, Loader2 } from 'lucide-react';
 
 interface BridgeDetailsDialogProps {
   bridge: Bridge | null;
@@ -36,8 +30,6 @@ interface BridgeDetailsDialogProps {
 
 export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetailsDialogProps) {
   const { updateBridge, isUpdating } = useBridges();
-  const { devices, isLoading: devicesLoading } = useDevices(bridge?.companyId, bridge?.id);
-  const { users, isLoading: usersLoading } = useUsers(bridge?.companyId);
 
   // Form state initialized from bridge
   const [formData, setFormData] = useState({
@@ -68,8 +60,6 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
     accelAlertToCritical: 1,
   });
 
-  const [userPermissions, setUserPermissions] = useState<Record<string, boolean>>({});
-
   // Update form when bridge changes
   useEffect(() => {
     if (bridge) {
@@ -95,17 +85,6 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
       });
     }
   }, [bridge]);
-
-  // Initialize user permissions
-  useEffect(() => {
-    if (users.length > 0) {
-      const perms: Record<string, boolean> = {};
-      users.forEach(u => {
-        perms[u.id] = true; // Default all to enabled
-      });
-      setUserPermissions(perms);
-    }
-  }, [users]);
 
   if (!bridge) return null;
 
@@ -138,7 +117,6 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
         width: formData.width || undefined,
         capacity: formData.capacity || undefined,
         constructionYear: formData.constructionYear || undefined,
-        structuralStatus: formData.structuralStatus,
         operationalCriticality: formData.operationalCriticality,
         kmz_file: formData.kmzFile || undefined,
         coordinates: formData.lat && formData.lng ? { lat: formData.lat, lng: formData.lng } : undefined,
@@ -149,15 +127,6 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
   const handleSaveLimits = () => {
     toast.success('Limites salvos com sucesso!');
   };
-
-  const toggleUserPermission = (userId: string) => {
-    setUserPermissions(prev => ({
-      ...prev,
-      [userId]: !prev[userId]
-    }));
-  };
-
-  const companyUsers = users.filter(u => u.companyId === bridge.companyId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -170,18 +139,10 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
         </DialogHeader>
 
         <Tabs defaultValue="info" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="info" className="flex items-center gap-1">
               <Settings className="h-4 w-4" />
               Informações
-            </TabsTrigger>
-            <TabsTrigger value="sensors" className="flex items-center gap-1">
-              <Cpu className="h-4 w-4" />
-              Sensores
-            </TabsTrigger>
-            <TabsTrigger value="users" className="flex items-center gap-1">
-              <Users className="h-4 w-4" />
-              Usuários
             </TabsTrigger>
             <TabsTrigger value="map" className="flex items-center gap-1">
               <MapPin className="h-4 w-4" />
@@ -297,19 +258,12 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Status Estrutural</Label>
-                  <Select 
-                    value={formData.structuralStatus}
-                    onValueChange={(v: StructuralStatus) => setFormData(p => ({ ...p, structuralStatus: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(structuralStatusLabels).map(([key, label]) => (
-                        <SelectItem key={key} value={key}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2 h-10">
+                    {getStatusBadge(formData.structuralStatus)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Status determinado automaticamente pelo sistema de monitoramento
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Criticidade Operacional</Label>
@@ -399,84 +353,6 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
                 </>
               )}
             </Button>
-          </TabsContent>
-
-          {/* Tab: Sensores */}
-          <TabsContent value="sensors" className="space-y-4 mt-4">
-            <h4 className="font-semibold">Sensores da Ponte</h4>
-            {devicesLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : devices.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Nenhum sensor vinculado a esta ponte.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {devices.map((device: any) => (
-                  <div key={device.id || device._id} className="flex items-center justify-between p-3 rounded-lg border">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                        <Cpu className="h-5 w-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm">{device.name || device.device_id}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Tipo: {device.type || 'Sensor'} | Status: {device.status || 'online'}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge variant={device.status === 'online' ? 'default' : 'secondary'}>
-                      {device.status || 'online'}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Tab: Usuários */}
-          <TabsContent value="users" className="space-y-4 mt-4">
-            <h4 className="font-semibold">Permissões de Acesso</h4>
-            {usersLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : companyUsers.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Nenhum usuário encontrado para esta empresa.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {companyUsers.map((user) => (
-                  <div key={user.id} className="flex items-center justify-between p-3 rounded-lg border">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9">
-                        <AvatarFallback className={cn(
-                          user.role === 'admin' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                        )}>
-                          {user.name.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium text-sm">{user.name}</p>
-                        <p className="text-xs text-muted-foreground">{user.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge variant="outline" className="text-xs">
-                        {user.role}
-                      </Badge>
-                      <Switch 
-                        checked={userPermissions[user.id] ?? true}
-                        onCheckedChange={() => toggleUserPermission(user.id)}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </TabsContent>
 
           {/* Tab: Mapa/KMZ */}
