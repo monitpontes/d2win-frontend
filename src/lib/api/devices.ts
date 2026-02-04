@@ -3,6 +3,7 @@ import type { Sensor, SensorType, SensorStatus } from '@/types';
 
 export interface ApiDevice {
   _id: string;
+  device_id: string; // String ID used by telemetry (e.g., "Motiva_P1_S01")
   bridge_id: string;
   company_id: string;
   type: SensorType;
@@ -31,9 +32,10 @@ export interface ApiDevice {
 export function mapApiDeviceToSensor(apiDevice: ApiDevice): Sensor {
   return {
     id: apiDevice._id,
+    deviceId: apiDevice.device_id || apiDevice.name, // String ID for telemetry matching
     bridgeId: apiDevice.bridge_id,
     type: apiDevice.type,
-    name: apiDevice.name,
+    name: apiDevice.name || apiDevice.device_id,
     status: apiDevice.status || 'offline',
     position: apiDevice.position || { x: 0, y: 0, z: 0 },
     lastReading: apiDevice.lastReading || {
