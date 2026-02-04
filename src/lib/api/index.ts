@@ -11,4 +11,4 @@ export type { ApiCompany } from './companies';
 export type { ApiBridge } from './bridges';
 export type { CreateUserData, UpdateUserData } from './users';
 export type { ApiDevice } from './devices';
-export type { TelemetryData, TelemetryHistoryParams } from './telemetry';
+export type { TelemetryData, TelemetryHistoryParams, TelemetryTimeSeriesPoint } from './telemetry';

@@ -49,7 +49,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
   const [axisFilter, setAxisFilter] = useState<AxisFilter>('all');
 
   // Fetch real telemetry data
-  const { latestData, isLoadingLatest } = useTelemetry(bridge.id);
+  const { latestData, timeSeriesData, isLoadingLatest } = useTelemetry(bridge.id);
 
   // Transform telemetry data into sensor readings
   const sensorReadings = useMemo(() => {
@@ -87,16 +87,16 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
         reference: getReferenceText(type),
         variation,
         status,
-        updatedAt: telemetry.timestamp ? formatDateValue(telemetry.timestamp, 'dd/MM HH:mm') : '-',
+        updatedAt: telemetry.timestamp ? formatDateValue(telemetry.timestamp, 'dd/MM HH:mm:ss') : '-',
       };
     });
   }, [latestData]);
 
-  // Generate chart data from telemetry
+  // Generate chart data from timeSeriesData (real data with WebSocket updates)
   const chartData = useMemo(() => {
-    if (!latestData || latestData.length === 0) {
+    if (!timeSeriesData || timeSeriesData.length === 0) {
       // Fallback mock data if no telemetry
-      const times = ['10:03', '10:18', '10:33', '10:48', '11:03'];
+      const times = ['10:03:00', '10:18:15', '10:33:30', '10:48:45', '11:03:00'];
       return {
         frequency: times.map(time => ({
           time,
@@ -109,28 +109,28 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
       };
     }
 
-    // Use real data - take last 5 readings
-    const frequencyData = latestData
-      .filter(d => d.frequency !== undefined)
-      .slice(-5)
+    // Use real time series data - take last 10 readings per type
+    const frequencyData = timeSeriesData
+      .filter(d => d.type === 'frequency')
+      .slice(-10)
       .map(d => ({
-        time: formatDateValue(d.timestamp, 'dd/MM HH:mm'),
-        value: d.frequency!,
+        time: formatDateValue(d.timestamp, 'HH:mm:ss'),
+        value: d.value,
       }));
 
-    const accelerationData = latestData
-      .filter(d => d.acceleration?.z !== undefined)
-      .slice(-5)
+    const accelerationData = timeSeriesData
+      .filter(d => d.type === 'acceleration')
+      .slice(-10)
       .map(d => ({
-        time: formatDateValue(d.timestamp, 'dd/MM HH:mm'),
-        value: d.acceleration!.z,
+        time: formatDateValue(d.timestamp, 'HH:mm:ss'),
+        value: d.value,
       }));
 
     return {
       frequency: frequencyData.length > 0 ? frequencyData : [{ time: '-', value: 0 }],
       acceleration: accelerationData.length > 0 ? accelerationData : [{ time: '-', value: 0 }],
     };
-  }, [latestData]);
+  }, [timeSeriesData]);
 
   const filteredReadings = useMemo(() => {
     if (axisFilter === 'all') return sensorReadings;
