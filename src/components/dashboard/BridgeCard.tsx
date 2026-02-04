@@ -21,11 +21,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { MapPin, Clock, ArrowRight, AlertTriangle, TableIcon, LineChart, Loader2 } from 'lucide-react';
+import { MapPin, Clock, ArrowRight, AlertTriangle, TableIcon, LineChart } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { LineChart as RechartsLine, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine } from 'recharts';
 import { useTelemetry } from '@/hooks/useTelemetry';
+import { useDevices } from '@/hooks/useDevices';
 import { DEFAULT_THRESHOLDS } from '@/lib/constants/sensorThresholds';
 import { 
   getSensorStatus, 
@@ -44,53 +45,110 @@ interface BridgeCardProps {
 type AxisFilter = 'all' | 'X' | 'Y' | 'Z';
 type ViewMode = 'table' | 'chart';
 
+const TEN_MINUTES_MS = 10 * 60 * 1000;
+
+// Calculate if sensor is active based on 10-minute threshold
+const calculateActivityStatus = (timestamp: string | undefined): 'online' | 'offline' => {
+  if (!timestamp) return 'offline';
+  return (Date.now() - new Date(timestamp).getTime()) < TEN_MINUTES_MS ? 'online' : 'offline';
+};
+
 export function BridgeCard({ bridge }: BridgeCardProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [axisFilter, setAxisFilter] = useState<AxisFilter>('all');
 
+  // Fetch devices from database first (instant HTTP)
+  const { devices } = useDevices(undefined, bridge.id);
+  
   // Fetch real telemetry data
-  const { latestData, timeSeriesData, isLoadingLatest } = useTelemetry(bridge.id);
+  const { latestData, timeSeriesData } = useTelemetry(bridge.id);
 
-  // Transform telemetry data into sensor readings
+  // Combine devices with telemetry - devices come first to show all sensors immediately
   const sensorReadings = useMemo(() => {
-    if (!latestData || latestData.length === 0) {
-      return [];
+    // If we have devices from the database, use them as the base
+    if (devices.length > 0) {
+      return devices.map(device => {
+        // Find matching telemetry
+        const telemetry = latestData.find(t => t.deviceId === device.id);
+        
+        // Determine type based on device type or telemetry mode
+        const isFrequency = device.type === 'frequency' || telemetry?.modoOperacao === 'frequencia';
+        const type: 'frequency' | 'acceleration' = isFrequency ? 'frequency' : 'acceleration';
+        
+        // Extract value if telemetry exists
+        let value: number | undefined;
+        if (telemetry) {
+          if (isFrequency) {
+            value = telemetry.frequency;
+          } else {
+            value = telemetry.acceleration?.z;
+          }
+        }
+        
+        const status = getSensorStatus(value, type);
+        const variation = calculateVariation(value, type);
+        const activityStatus = calculateActivityStatus(telemetry?.timestamp);
+
+        // Format display value
+        const displayValue = value !== undefined && value !== null
+          ? `${value.toFixed(2)} ${isFrequency ? 'Hz' : 'm/s²'}`
+          : '-';
+
+        return {
+          sensorName: device.name || `Sensor ${device.id.slice(-4)}`,
+          axis: 'Z' as const,
+          lastValue: displayValue,
+          reference: getReferenceText(type),
+          variation,
+          status,
+          activityStatus,
+          updatedAt: telemetry?.timestamp ? formatDateValue(telemetry.timestamp, 'dd/MM HH:mm:ss') : '-',
+        };
+      });
     }
 
-    return latestData.map((telemetry, idx) => {
-      // Determine type based on modo_operacao field (not data presence)
-      const isFrequency = telemetry.modoOperacao === 'frequencia';
-      const isAcceleration = telemetry.modoOperacao === 'aceleracao';
-      
-      // Extract value based on mode - may be undefined if no data
-      let value: number | undefined;
-      if (isFrequency) {
-        value = telemetry.frequency;
-      } else if (isAcceleration) {
-        value = telemetry.acceleration?.z;
-      }
-      
-      const type: 'frequency' | 'acceleration' = isFrequency ? 'frequency' : 'acceleration';
-      const status = getSensorStatus(value, type);
-      const variation = calculateVariation(value, type);
+    // Fallback to latestData if no devices (for backwards compatibility)
+    if (latestData.length > 0) {
+      return latestData.map((telemetry, idx) => {
+        const isFrequency = telemetry.modoOperacao === 'frequencia';
+        const isAcceleration = telemetry.modoOperacao === 'aceleracao';
+        
+        let value: number | undefined;
+        if (isFrequency) {
+          value = telemetry.frequency;
+        } else if (isAcceleration) {
+          value = telemetry.acceleration?.z;
+        }
+        
+        const type: 'frequency' | 'acceleration' = isFrequency ? 'frequency' : 'acceleration';
+        const status = getSensorStatus(value, type);
+        const variation = calculateVariation(value, type);
+        const activityStatus = calculateActivityStatus(telemetry.timestamp);
 
-      // Format display value - show "-" if no data
-      const displayValue = value !== undefined && value !== null
-        ? `${value.toFixed(2)} ${isFrequency ? 'Hz' : 'm/s²'}`
-        : '-';
+        const displayValue = value !== undefined && value !== null
+          ? `${value.toFixed(2)} ${isFrequency ? 'Hz' : 'm/s²'}`
+          : '-';
 
-      return {
-        sensorName: telemetry.deviceId || `Sensor ${idx + 1}`,
-        axis: 'Z' as const,
-        type: isFrequency ? 'Frequência' : 'Aceleração',
-        lastValue: displayValue,
-        reference: getReferenceText(type),
-        variation,
-        status,
-        updatedAt: telemetry.timestamp ? formatDateValue(telemetry.timestamp, 'dd/MM HH:mm:ss') : '-',
-      };
-    });
-  }, [latestData]);
+        return {
+          sensorName: telemetry.deviceId || `Sensor ${idx + 1}`,
+          axis: 'Z' as const,
+          lastValue: displayValue,
+          reference: getReferenceText(type),
+          variation,
+          status,
+          activityStatus,
+          updatedAt: telemetry.timestamp ? formatDateValue(telemetry.timestamp, 'dd/MM HH:mm:ss') : '-',
+        };
+      });
+    }
+
+    return [];
+  }, [devices, latestData]);
+
+  // Count active sensors (data within last 10 minutes)
+  const activeSensorsCount = useMemo(() => 
+    sensorReadings.filter(r => r.activityStatus === 'online').length
+  , [sensorReadings]);
 
   // Generate chart data from timeSeriesData (real data with WebSocket updates)
   const chartData = useMemo(() => {
@@ -259,7 +317,6 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                   <TableRow className="bg-muted/50">
                     <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Sensor</TableHead>
                     <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Eixo</TableHead>
-                    <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Tipo</TableHead>
                     <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Último Valor</TableHead>
                     <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Referência</TableHead>
                     <TableHead className="text-xs h-8 sticky top-0 bg-muted/95">Variação</TableHead>
@@ -276,7 +333,6 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                           {reading.axis}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground py-1">{reading.type}</TableCell>
                       <TableCell className="text-xs font-medium py-1">{reading.lastValue}</TableCell>
                       <TableCell className="text-xs text-muted-foreground py-1">{reading.reference}</TableCell>
                       <TableCell className={cn('text-xs font-medium py-1', getVariationColor(reading.variation))}>
@@ -364,7 +420,9 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
         {/* Footer Stats */}
         <div className="flex items-center justify-between mt-3 pt-3 border-t text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
-            <span>🔌 {bridge.sensorCount} sensores</span>
+            <span className={activeSensorsCount > 0 ? 'text-success' : ''}>
+              🔌 {activeSensorsCount}/{sensorReadings.length} sensores ativos
+            </span>
           </div>
           {alertCount > 0 && (
             <div className="flex items-center gap-1 text-warning">
