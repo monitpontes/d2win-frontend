@@ -65,80 +65,67 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
 
   // Combine devices with telemetry - devices come first to show all sensors immediately
   const sensorReadings = useMemo(() => {
+    // Helper to format sensor name - use name if available, else last 4 chars of ID
+    const formatSensorName = (name: string | undefined, id: string) => {
+      if (name) return name;
+      return `Sensor ${id.slice(-4)}`;
+    };
+
+    // Helper to process telemetry data into a reading
+    const processReading = (
+      deviceId: string,
+      deviceName: string | undefined,
+      telemetry: typeof latestData[0] | undefined,
+      deviceType?: string
+    ) => {
+      // Determine type based on device type or telemetry mode
+      const isFrequency = deviceType === 'frequency' || telemetry?.modoOperacao === 'frequencia';
+      const type: 'frequency' | 'acceleration' = isFrequency ? 'frequency' : 'acceleration';
+      
+      // Extract value if telemetry exists
+      let value: number | undefined;
+      if (telemetry) {
+        if (isFrequency) {
+          value = telemetry.frequency;
+        } else {
+          value = telemetry.acceleration?.z;
+        }
+      }
+      
+      const status = getSensorStatus(value, type);
+      const variation = calculateVariation(value, type);
+      const activityStatus = calculateActivityStatus(telemetry?.timestamp);
+
+      // Format display value
+      const displayValue = value !== undefined && value !== null
+        ? `${value.toFixed(2)} ${isFrequency ? 'Hz' : 'm/s²'}`
+        : '-';
+
+      return {
+        sensorName: formatSensorName(deviceName, deviceId),
+        axis: 'Z' as const,
+        lastValue: displayValue,
+        reference: getReferenceText(type),
+        variation,
+        status,
+        activityStatus,
+        updatedAt: telemetry?.timestamp ? formatDateValue(telemetry.timestamp, 'dd/MM HH:mm:ss') : '-',
+      };
+    };
+
     // If we have devices from the database, use them as the base
     if (devices.length > 0) {
       return devices.map(device => {
-        // Find matching telemetry
+        // Find matching telemetry by device ID
         const telemetry = latestData.find(t => t.deviceId === device.id);
-        
-        // Determine type based on device type or telemetry mode
-        const isFrequency = device.type === 'frequency' || telemetry?.modoOperacao === 'frequencia';
-        const type: 'frequency' | 'acceleration' = isFrequency ? 'frequency' : 'acceleration';
-        
-        // Extract value if telemetry exists
-        let value: number | undefined;
-        if (telemetry) {
-          if (isFrequency) {
-            value = telemetry.frequency;
-          } else {
-            value = telemetry.acceleration?.z;
-          }
-        }
-        
-        const status = getSensorStatus(value, type);
-        const variation = calculateVariation(value, type);
-        const activityStatus = calculateActivityStatus(telemetry?.timestamp);
-
-        // Format display value
-        const displayValue = value !== undefined && value !== null
-          ? `${value.toFixed(2)} ${isFrequency ? 'Hz' : 'm/s²'}`
-          : '-';
-
-        return {
-          sensorName: device.name || `Sensor ${device.id.slice(-4)}`,
-          axis: 'Z' as const,
-          lastValue: displayValue,
-          reference: getReferenceText(type),
-          variation,
-          status,
-          activityStatus,
-          updatedAt: telemetry?.timestamp ? formatDateValue(telemetry.timestamp, 'dd/MM HH:mm:ss') : '-',
-        };
+        return processReading(device.id, device.name, telemetry, device.type);
       });
     }
 
-    // Fallback to latestData if no devices (for backwards compatibility)
+    // Fallback to latestData if no devices (API timeout or empty)
     if (latestData.length > 0) {
-      return latestData.map((telemetry, idx) => {
-        const isFrequency = telemetry.modoOperacao === 'frequencia';
-        const isAcceleration = telemetry.modoOperacao === 'aceleracao';
-        
-        let value: number | undefined;
-        if (isFrequency) {
-          value = telemetry.frequency;
-        } else if (isAcceleration) {
-          value = telemetry.acceleration?.z;
-        }
-        
-        const type: 'frequency' | 'acceleration' = isFrequency ? 'frequency' : 'acceleration';
-        const status = getSensorStatus(value, type);
-        const variation = calculateVariation(value, type);
-        const activityStatus = calculateActivityStatus(telemetry.timestamp);
-
-        const displayValue = value !== undefined && value !== null
-          ? `${value.toFixed(2)} ${isFrequency ? 'Hz' : 'm/s²'}`
-          : '-';
-
-        return {
-          sensorName: telemetry.deviceId || `Sensor ${idx + 1}`,
-          axis: 'Z' as const,
-          lastValue: displayValue,
-          reference: getReferenceText(type),
-          variation,
-          status,
-          activityStatus,
-          updatedAt: telemetry.timestamp ? formatDateValue(telemetry.timestamp, 'dd/MM HH:mm:ss') : '-',
-        };
+      return latestData.map(telemetry => {
+        return processReading(telemetry.deviceId, undefined, telemetry);
       });
     }
 
