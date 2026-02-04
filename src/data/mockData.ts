@@ -574,6 +574,7 @@ export const mockSensors: Sensor[] = [
   // Bridge 1 sensors
   {
     id: 'sensor-1-1',
+    deviceId: 'sensor-1-1',
     bridgeId: 'bridge-1',
     type: 'acceleration',
     name: 'Acelerômetro A1',
@@ -586,6 +587,7 @@ export const mockSensors: Sensor[] = [
   },
   {
     id: 'sensor-1-2',
+    deviceId: 'sensor-1-2',
     bridgeId: 'bridge-1',
     type: 'frequency',
     name: 'Frequencímetro F1',
@@ -598,6 +600,7 @@ export const mockSensors: Sensor[] = [
   },
   {
     id: 'sensor-1-3',
+    deviceId: 'sensor-1-3',
     bridgeId: 'bridge-1',
     type: 'command_box',
     name: 'Caixa Comando C1',
@@ -611,6 +614,7 @@ export const mockSensors: Sensor[] = [
   // Bridge 2 sensors
   {
     id: 'sensor-2-1',
+    deviceId: 'sensor-2-1',
     bridgeId: 'bridge-2',
     type: 'acceleration',
     name: 'Acelerômetro A1',
@@ -623,6 +627,7 @@ export const mockSensors: Sensor[] = [
   },
   {
     id: 'sensor-2-2',
+    deviceId: 'sensor-2-2',
     bridgeId: 'bridge-2',
     type: 'frequency',
     name: 'Frequencímetro F1',
@@ -636,6 +641,7 @@ export const mockSensors: Sensor[] = [
   // Bridge 3 sensors
   {
     id: 'sensor-3-1',
+    deviceId: 'sensor-3-1',
     bridgeId: 'bridge-3',
     type: 'acceleration',
     name: 'Acelerômetro A1',

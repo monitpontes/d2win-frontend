@@ -86,6 +86,7 @@ export type SensorStatus = 'online' | 'offline' | 'maintenance';
 
 export interface Sensor {
   id: string;
+  deviceId: string; // String ID for telemetry matching (e.g., "Motiva_P1_S01")
   bridgeId: string;
   type: SensorType;
   name: string;

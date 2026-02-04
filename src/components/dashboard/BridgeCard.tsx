@@ -116,9 +116,11 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
     // If we have devices from the database, use them as the base
     if (devices.length > 0) {
       return devices.map(device => {
-        // Find matching telemetry by device ID
-        const telemetry = latestData.find(t => t.deviceId === device.id);
-        return processReading(device.id, device.name, telemetry, device.type);
+        // Match using deviceId (string) instead of id (ObjectId)
+        const telemetry = latestData.find(t => 
+          t.deviceId === device.deviceId || t.deviceId === device.name
+        );
+        return processReading(device.deviceId, device.name, telemetry, device.type);
       });
     }
 
