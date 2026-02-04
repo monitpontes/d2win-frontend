@@ -1,255 +1,106 @@
 
-# Plano: Corrigir Painel de Sensor com Picos Reais e Gráfico do Histórico
+# Plano: Corrigir Exibição de Valores e Atualização em Tempo Real
 
 ## Problemas Identificados
 
-| Problema | Atual | Esperado |
-|----------|-------|----------|
-| Nome do sensor | `68b9e38a...-Motiva_P1_S01` (bridge.id + deviceId) | `Motiva_P1_S01` (do banco) |
-| Posição | `Posição Motiva_P1_S01` (gerado) | `Viga 1` (do banco - campo position ou name) |
-| Frequência Pico 1/2 | Só mostra Pico 1 (ou vazio) | Mostrar ambos peaks[0] e peaks[1] |
-| Magnitude Pico 1/2 | Calculada (freq * 5.5) | Valor real peaks[0].mag e peaks[1].mag |
-| Gráfico | Dados mockados (Math.random) | Dados reais do `timeSeriesData` |
+### Problema 1: WebSocket não extrai magnitude e segundo pico
+O `useTelemetrySocket.ts` só extrai `peaks[0].f` (frequência do primeiro pico), mas ignora:
+- `peaks[0].mag` (magnitude do pico 1)
+- `peaks[1].f` (frequência do pico 2)
+- `peaks[1].mag` (magnitude do pico 2)
 
-## Estrutura da API de Telemetria
-
-```typescript
-// API retorna múltiplos picos:
-freq: {
-  peaks: [
-    { f: 3.52, mag: 1019.72 },  // Pico 1
-    { f: 3.59, mag: 901.05 }    // Pico 2
-  ],
-  ts: "2026-02-04T19:24:08.545Z"
+**Prova nos logs do console:**
+```json
+{
+  "type": "freq",
+  "device_id": "Motiva_P1_S03",
+  "payload": {
+    "peaks": [
+      { "f": 3.527832, "mag": 359.7332792 },  // ← magnitude1 ignorada!
+      { "f": 3.564453, "mag": 315.9170741 }   // ← pico 2 inteiro ignorado!
+    ]
+  }
 }
 ```
 
-Atualmente só `peaks[0].f` é extraído, ignorando `peaks[1]` e todas as magnitudes.
+### Problema 2: Painel não atualiza em tempo real
+Quando o usuário clica em um sensor, `selectedSensor3D` fica estático (um snapshot). Os dados do WebSocket atualizam `bridge3DSensors`, mas o painel continua mostrando os valores antigos.
 
----
+## Solução
 
-## Alterações Necessárias
+### 1. Atualizar `useTelemetrySocket.ts` para extrair todos os campos
 
-### 1. Expandir Interface TelemetryData
-
-Adicionar campos para os dois picos com suas magnitudes:
-
-```typescript
-// src/lib/api/telemetry.ts
-export interface TelemetryData {
-  deviceId: string;
-  bridgeId: string;
-  timestamp: string;
-  frequency?: number;           // Pico 1 frequência (compatibilidade)
-  frequency2?: number;          // NOVO: Pico 2 frequência
-  magnitude1?: number;          // NOVO: Pico 1 magnitude
-  magnitude2?: number;          // NOVO: Pico 2 magnitude
-  acceleration?: { x: number; y: number; z: number };
-  modoOperacao?: string;
-  status?: string;
-}
-```
-
-### 2. Atualizar Mapeamento da API
-
-Extrair os dois picos com magnitudes:
+Modificar o mapeamento do evento WebSocket para incluir todos os dados:
 
 ```typescript
-// src/lib/api/telemetry.ts - mapApiDeviceToTelemetry
-function mapApiDeviceToTelemetry(device: ApiDeviceTelemetry, bridgeId: string): TelemetryData {
-  const isFrequency = device.modo_operacao === 'frequencia';
-  const peaks = device.freq?.peaks || [];
-  
-  return {
-    deviceId: device.device_id,
-    bridgeId: bridgeId,
-    timestamp: device.last_seen,
-    modoOperacao: device.modo_operacao,
-    status: device.status,
-    // Pico 1
-    frequency: peaks[0]?.f,
-    magnitude1: peaks[0]?.mag,
-    // Pico 2
-    frequency2: peaks[1]?.f,
-    magnitude2: peaks[1]?.mag,
-    // Aceleração
-    acceleration: !isFrequency && device.accel?.value !== undefined
-      ? { x: 0, y: 0, z: device.accel.value }
-      : undefined,
-  };
-}
-```
-
-### 3. Atualizar Interface Bridge3DSensor
-
-```typescript
-// src/components/bridge/Bridge3D.tsx
-export type Bridge3DSensor = {
-  id: string;
-  name: string;
-  position: string;
-  type: "Frequência" | "Aceleração" | "Comando";
-  deviceType: "frequencia" | "aceleracao" | "caixa_comando";
-  status: "normal" | "warning" | "critical" | "inactive" | "alert" | "alerta" | "critica";
-  frequency1?: number;
-  magnitude1?: number;   // NOVO
-  frequency2?: number;
-  magnitude2?: number;   // NOVO
-  acceleration?: number;
-  timestamp?: string;
+const mapped: TelemetryData = {
+  deviceId: event.device_id,
+  bridgeId: event.bridge_id,
+  timestamp: event.ts,
+  modoOperacao: event.type === "freq" ? "frequencia" : "aceleracao",
+  status: event.payload.severity,
+  // Extrair TODOS os peaks
+  frequency: event.type === "freq" ? event.payload.peaks?.[0]?.f : undefined,
+  magnitude1: event.type === "freq" ? event.payload.peaks?.[0]?.mag : undefined,
+  frequency2: event.type === "freq" ? event.payload.peaks?.[1]?.f : undefined,
+  magnitude2: event.type === "freq" ? event.payload.peaks?.[1]?.mag : undefined,
+  // Aceleração
+  acceleration: event.type === "accel" && event.payload.value !== undefined
+    ? { x: 0, y: 0, z: event.payload.value }
+    : undefined,
 };
 ```
 
-### 4. Cruzar com Dados do Banco (sensors) no BridgeDetail
+### 2. Atualizar painel para sincronizar com dados em tempo real
 
-Usar os dados do banco para nome e posição, e telemetria para valores:
+No `BridgeDetail.tsx`, criar um `useMemo` que mantém o `selectedSensor3D` sincronizado com os dados mais recentes:
 
 ```typescript
-// src/pages/BridgeDetail.tsx - bridge3DSensors useMemo
-const bridge3DSensors: Bridge3DSensor[] = useMemo(() => {
-  // Criar mapa de telemetria por deviceId
-  const telemetryByDevice = new Map(
-    telemetryData.map(t => [t.deviceId, t])
-  );
-
-  // Base: sensores do banco (nome, posição) + telemetria (valores)
-  if (sensors.length > 0) {
-    return sensors.map((sensor, idx) => {
-      const telemetry = telemetryByDevice.get(sensor.deviceId) || 
-                        telemetryByDevice.get(sensor.name);
-      
-      const isFrequency = sensor.type === 'frequency' || 
-                          telemetry?.modoOperacao === 'frequencia';
-      
-      return {
-        id: sensor.deviceId || sensor.name,
-        name: sensor.name,  // Nome do banco
-        position: `Viga ${idx + 1}`,  // Ou usar sensor.position se existir
-        type: isFrequency ? 'Frequência' : 'Aceleração',
-        deviceType: isFrequency ? 'frequencia' : 'aceleracao',
-        status: mapStatus(telemetry?.status),
-        frequency1: telemetry?.frequency,
-        magnitude1: telemetry?.magnitude1,
-        frequency2: telemetry?.frequency2,
-        magnitude2: telemetry?.magnitude2,
-        acceleration: telemetry?.acceleration?.z,
-        timestamp: telemetry?.timestamp,
-      };
-    });
-  }
-  // Fallback para telemetria direta se banco vazio
-  // ...
-}, [sensors, telemetryData]);
-```
-
-### 5. Atualizar Display do Painel de Sensor
-
-Mostrar valores reais dos picos:
-
-```tsx
-// src/pages/BridgeDetail.tsx - painel de sensor selecionado
-{selectedSensor3D.deviceType === 'frequencia' && (
-  <>
-    <div className="flex justify-between items-center py-1 border-b">
-      <span className="text-muted-foreground text-sm">Frequência Pico 1:</span>
-      <span className="font-bold text-sm">
-        {selectedSensor3D.frequency1?.toFixed(2) || '-'} Hz
-      </span>
-    </div>
-    <div className="flex justify-between items-center py-1 border-b">
-      <span className="text-muted-foreground text-sm">Magnitude Pico 1:</span>
-      <span className="font-medium text-sm">
-        {selectedSensor3D.magnitude1?.toFixed(2) || '-'}
-      </span>
-    </div>
-    <div className="flex justify-between items-center py-1 border-b">
-      <span className="text-muted-foreground text-sm">Frequência Pico 2:</span>
-      <span className="font-bold text-sm">
-        {selectedSensor3D.frequency2?.toFixed(2) || '-'} Hz
-      </span>
-    </div>
-    <div className="flex justify-between items-center py-1 border-b">
-      <span className="text-muted-foreground text-sm">Magnitude Pico 2:</span>
-      <span className="font-medium text-sm">
-        {selectedSensor3D.magnitude2?.toFixed(2) || '-'}
-      </span>
-    </div>
-  </>
-)}
-```
-
-### 6. Usar Dados Reais no Gráfico
-
-Substituir dados mockados pelo `timeSeriesData` real:
-
-```tsx
-// src/pages/BridgeDetail.tsx - gráfico do sensor
-// Buscar timeSeriesData do useTelemetry
-const { latestData: telemetryData, timeSeriesData, isLoading } = useTelemetry(id);
-
-// Filtrar dados do sensor selecionado
-const sensorChartData = useMemo(() => {
-  if (!selectedSensor3D || !timeSeriesData) return [];
+// Sincronizar sensor selecionado com dados atualizados
+const currentSelectedSensor = useMemo(() => {
+  if (!selectedSensor3D) return null;
   
-  return timeSeriesData
-    .filter(point => point.deviceId === selectedSensor3D.id)
-    .slice(-8)  // Últimas 8 leituras
-    .map(point => ({
-      time: format(new Date(point.timestamp), 'HH:mm:ss'),
-      value: point.value,
-      type: point.type,
-    }));
-}, [selectedSensor3D, timeSeriesData]);
-
-// Usar sensorChartData no LineChart
-<LineChart data={sensorChartData}>
-  ...
-</LineChart>
+  // Buscar versão atualizada do sensor em bridge3DSensors
+  const updated = bridge3DSensors.find(s => s.id === selectedSensor3D.id);
+  return updated || selectedSensor3D;
+}, [selectedSensor3D, bridge3DSensors]);
 ```
 
----
+E usar `currentSelectedSensor` no painel em vez de `selectedSensor3D`.
+
+## Fluxo Corrigido
+
+```text
+WebSocket recebe evento freq
+    │
+    ▼
+useTelemetrySocket mapeia TODOS os campos:
+- frequency, magnitude1, frequency2, magnitude2
+    │
+    ▼
+useTelemetry.combinedData atualiza com realtimeData
+    │
+    ▼
+bridge3DSensors recalcula (useMemo)
+    │
+    ▼
+currentSelectedSensor sincroniza automaticamente
+    │
+    ▼
+Painel exibe valores atualizados em tempo real
+```
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/lib/api/telemetry.ts` | Adicionar campos frequency2, magnitude1, magnitude2 na interface e mapeamento |
-| `src/components/bridge/Bridge3D.tsx` | Adicionar magnitude1/2 na interface Bridge3DSensor |
-| `src/pages/BridgeDetail.tsx` | Cruzar sensors com telemetry, usar nome do banco, mostrar picos reais, usar timeSeriesData |
-
----
-
-## Fluxo de Dados Corrigido
-
-```text
-1. useDevices(bridgeId)
-   → sensors: [{ deviceId: "Motiva_P1_S01", name: "Motiva_P1_S01", position: {...} }]
-
-2. useTelemetry(bridgeId)
-   → latestData: [{ deviceId: "Motiva_P1_S01", frequency: 3.52, magnitude1: 1019, frequency2: 3.59, magnitude2: 901 }]
-   → timeSeriesData: [{ deviceId: "Motiva_P1_S01", timestamp, value, type }...]
-
-3. bridge3DSensors = sensors.map(s => {
-     telemetry = latestData.find(t => t.deviceId === s.deviceId);
-     return { 
-       name: s.name,           // "Motiva_P1_S01" do banco
-       frequency1: telemetry.frequency,
-       magnitude1: telemetry.magnitude1,
-       ...
-     }
-   })
-
-4. Gráfico: timeSeriesData.filter(p => p.deviceId === sensor.id).slice(-8)
-```
-
----
+| `src/hooks/useTelemetrySocket.ts` | Extrair magnitude1, magnitude2, frequency2 do payload |
+| `src/pages/BridgeDetail.tsx` | Criar `currentSelectedSensor` para sincronizar painel em tempo real |
 
 ## Resultado Esperado
 
-- **Nome**: `Motiva_P1_S01` (do banco, sem o ID da ponte)
-- **Posição**: `Viga 1` (baseado na ordem ou campo do banco)
-- **Frequência Pico 1**: `3.52 Hz` (valor real)
-- **Magnitude Pico 1**: `1019.72` (valor real)
-- **Frequência Pico 2**: `3.59 Hz` (valor real)
-- **Magnitude Pico 2**: `901.05` (valor real)
-- **Gráfico**: Série temporal real dos últimos 8 pontos do sensor
+- **Frequência Pico 1**: `3.52 Hz` (valor real atualizado via WebSocket)
+- **Magnitude Pico 1**: `359.73` (valor real)
+- **Frequência Pico 2**: `3.56 Hz` (valor real)
+- **Magnitude Pico 2**: `315.92` (valor real)
+- **Atualização automática**: Valores mudam em tempo real sem precisar clicar novamente
