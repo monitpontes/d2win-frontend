@@ -19,6 +19,18 @@ export interface Company {
   description?: string;
   logo?: string;
   createdAt: string;
+  // Cadastro do cliente
+  cnpj?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  // Contato responsável
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
 }
 
 // Operational status of a bridge

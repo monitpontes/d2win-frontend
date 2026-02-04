@@ -23,6 +23,7 @@ import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { BridgeDetailsDialog } from '@/components/admin/BridgeDetailsDialog';
 import { DeviceParametersDialog } from '@/components/admin/DeviceParametersDialog';
 import { EditUserDialog } from '@/components/admin/EditUserDialog';
+import { NewBridgeDialog } from '@/components/admin/NewBridgeDialog';
 import { toast } from 'sonner';
 import type { Bridge, Sensor, User, UserRole } from '@/types';
 
@@ -656,39 +657,15 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
-      {/* New Bridge Dialog */}
-      <Dialog open={isNewBridgeOpen} onOpenChange={setIsNewBridgeOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nova Ponte</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Nome</Label>
-              <Input placeholder="Nome da ponte" />
-            </div>
-            <div className="space-y-2">
-              <Label>Localização</Label>
-              <Input placeholder="Localização" />
-            </div>
-            <div className="space-y-2">
-              <Label>Rodovia</Label>
-              <Input placeholder="Ex: SP-150" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsNewBridgeOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={() => { 
-              toast.info('Funcionalidade em desenvolvimento'); 
-              setIsNewBridgeOpen(false); 
-            }}>
-              Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* New Bridge Dialog with Auto Sensor Creation */}
+      <NewBridgeDialog
+        open={isNewBridgeOpen}
+        onOpenChange={setIsNewBridgeOpen}
+        companyId={selectedCompanyId}
+        onSuccess={() => {
+          setIsNewBridgeOpen(false);
+        }}
+      />
 
       {/* New Device Dialog */}
       <Dialog open={isNewDeviceOpen} onOpenChange={setIsNewDeviceOpen}>

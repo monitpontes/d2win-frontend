@@ -95,17 +95,10 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
   // Generate chart data from timeSeriesData (real data with WebSocket updates)
   const chartData = useMemo(() => {
     if (!timeSeriesData || timeSeriesData.length === 0) {
-      // Fallback mock data if no telemetry
-      const times = ['10:03:00', '10:18:15', '10:33:30', '10:48:45', '11:03:00'];
+      // Retorna arrays vazios se não há dados (sem mock)
       return {
-        frequency: times.map(time => ({
-          time,
-          value: 3.5 + Math.random() * 0.3,
-        })),
-        acceleration: times.map(time => ({
-          time,
-          value: 9.5 + Math.random() * 0.5,
-        })),
+        frequency: [],
+        acceleration: [],
       };
     }
 
@@ -127,8 +120,8 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
       }));
 
     return {
-      frequency: frequencyData.length > 0 ? frequencyData : [{ time: '-', value: 0 }],
-      acceleration: accelerationData.length > 0 ? accelerationData : [{ time: '-', value: 0 }],
+      frequency: frequencyData,
+      acceleration: accelerationData,
     };
   }, [timeSeriesData]);
 
@@ -300,31 +293,37 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
         ) : (
           /* Chart View */
           <div className="space-y-3">
-            <div className="text-xs font-medium text-muted-foreground">Últimos 5 Dados por Sensor</div>
+            <div className="text-xs font-medium text-muted-foreground">Últimos Dados por Sensor</div>
             
             {/* Frequency Chart */}
             <div className="border rounded-md p-2">
               <div className="text-xs font-medium mb-2">Frequência (Hz) - Eixo Z</div>
               <div className="h-[100px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsLine data={chartData.frequency}>
-                    <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[2, 8]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <Tooltip />
-                    <ReferenceLine 
-                      y={DEFAULT_THRESHOLDS.frequency.reference} 
-                      stroke="hsl(var(--muted-foreground))" 
-                      strokeDasharray="4 2" 
-                      label={{ value: `Ref ${DEFAULT_THRESHOLDS.frequency.reference}`, fontSize: 8, fill: 'hsl(var(--muted-foreground))' }}
-                    />
-                    <ReferenceLine 
-                      y={DEFAULT_THRESHOLDS.frequency.attention} 
-                      stroke="hsl(var(--warning))" 
-                      strokeDasharray="4 2"
-                    />
-                    <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={{ r: 2 }} name="Freq Z" />
-                  </RechartsLine>
-                </ResponsiveContainer>
+                {chartData.frequency.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                    Sem dados de frequência disponíveis
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsLine data={chartData.frequency}>
+                      <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                      <YAxis domain={[2, 8]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                      <Tooltip />
+                      <ReferenceLine 
+                        y={DEFAULT_THRESHOLDS.frequency.reference} 
+                        stroke="hsl(var(--muted-foreground))" 
+                        strokeDasharray="4 2" 
+                        label={{ value: `Ref ${DEFAULT_THRESHOLDS.frequency.reference}`, fontSize: 8, fill: 'hsl(var(--muted-foreground))' }}
+                      />
+                      <ReferenceLine 
+                        y={DEFAULT_THRESHOLDS.frequency.attention} 
+                        stroke="hsl(var(--warning))" 
+                        strokeDasharray="4 2"
+                      />
+                      <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={{ r: 2 }} name="Freq Z" />
+                    </RechartsLine>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
 
@@ -332,25 +331,31 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
             <div className="border rounded-md p-2">
               <div className="text-xs font-medium mb-2">Aceleração (m/s²) - Eixo Z</div>
               <div className="h-[80px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsLine data={chartData.acceleration}>
-                    <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[0, 25]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <Tooltip />
-                    <ReferenceLine 
-                      y={DEFAULT_THRESHOLDS.acceleration.normal} 
-                      stroke="hsl(var(--warning))" 
-                      strokeDasharray="4 2" 
-                      label={{ value: `Atenção ${DEFAULT_THRESHOLDS.acceleration.normal}`, fontSize: 8, fill: 'hsl(var(--warning))' }}
-                    />
-                    <ReferenceLine 
-                      y={DEFAULT_THRESHOLDS.acceleration.alert} 
-                      stroke="hsl(var(--destructive))" 
-                      strokeDasharray="4 2"
-                    />
-                    <Line type="monotone" dataKey="value" stroke="hsl(var(--chart-2))" strokeWidth={1.5} dot={{ r: 2 }} name="Acel Z" />
-                  </RechartsLine>
-                </ResponsiveContainer>
+                {chartData.acceleration.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                    Sem dados de aceleração disponíveis
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsLine data={chartData.acceleration}>
+                      <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                      <YAxis domain={[0, 25]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                      <Tooltip />
+                      <ReferenceLine 
+                        y={DEFAULT_THRESHOLDS.acceleration.normal} 
+                        stroke="hsl(var(--warning))" 
+                        strokeDasharray="4 2" 
+                        label={{ value: `Atenção ${DEFAULT_THRESHOLDS.acceleration.normal}`, fontSize: 8, fill: 'hsl(var(--warning))' }}
+                      />
+                      <ReferenceLine 
+                        y={DEFAULT_THRESHOLDS.acceleration.alert} 
+                        stroke="hsl(var(--destructive))" 
+                        strokeDasharray="4 2"
+                      />
+                      <Line type="monotone" dataKey="value" stroke="hsl(var(--chart-2))" strokeWidth={1.5} dot={{ r: 2 }} name="Acel Z" />
+                    </RechartsLine>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
           </div>

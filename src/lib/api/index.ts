@@ -7,7 +7,7 @@ export { devicesService, mapApiDeviceToSensor } from './devices';
 export { telemetryService } from './telemetry';
 
 export type { LoginResponse, ApiUser } from './auth';
-export type { ApiCompany } from './companies';
+export type { ApiCompany, CreateCompanyData } from './companies';
 export type { ApiBridge } from './bridges';
 export type { CreateUserData, UpdateUserData } from './users';
 export type { ApiDevice } from './devices';

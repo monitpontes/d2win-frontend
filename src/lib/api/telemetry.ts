@@ -42,7 +42,10 @@ interface ApiHistoryAccelReading {
   ts: string;
   value: number;
   severity: string;
-  meta?: { device_id: string };
+  meta?: { 
+    device_id: string;
+    axis?: 'x' | 'y' | 'z'; 
+  };
 }
 
 interface ApiHistoryFreqReading {
@@ -159,6 +162,7 @@ export interface TelemetryTimeSeriesPoint {
   type: 'frequency' | 'acceleration';
   value: number;
   severity?: string;
+  axis?: 'x' | 'y' | 'z'; // Eixo do sensor, default 'z'
 }
 
 // Expand freq[] and accel[] arrays into time series points for charts
@@ -193,8 +197,9 @@ export async function getHistoryTimeSeries(
       }
     });
 
-    // Expand acceleration array (Z axis)
+    // Expand acceleration array with axis detection
     item.accel?.forEach(reading => {
+      const axis = reading.meta?.axis || 'z'; // Default Z se não especificado
       points.push({
         deviceId: item.device_id,
         bridgeId,
@@ -202,6 +207,7 @@ export async function getHistoryTimeSeries(
         type: 'acceleration',
         value: reading.value,
         severity: reading.severity,
+        axis,
       });
     });
   });
