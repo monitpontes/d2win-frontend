@@ -72,7 +72,15 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 export function useSocket() {
   const context = useContext(SocketContext);
   if (!context) {
-    throw new Error("useSocket must be used within SocketProvider");
+    // Return a safe default instead of throwing - allows usage before provider mounts
+    return {
+      socket: null,
+      isConnected: false,
+      joinBridge: () => {},
+      leaveBridge: () => {},
+      joinCompany: () => {},
+      leaveCompany: () => {},
+    };
   }
   return context;
 }
