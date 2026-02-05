@@ -17,11 +17,24 @@ interface TelemetryEvent {
   };
 }
 
+// Ponto de série temporal para gráficos (acumula cada leitura)
+export interface TimeSeriesHistoryPoint {
+  deviceId: string;
+  timestamp: string;
+  type: 'frequency' | 'acceleration';
+  value: number;
+  peak2?: number; // Segundo pico de frequência
+  severity?: string;
+}
+
 export function useTelemetrySocket(bridgeId?: string) {
   const { socket, isConnected, joinBridge, leaveBridge } = useSocket();
   const [realtimeData, setRealtimeData] = useState<TelemetryData[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const joinedRef = useRef<string | null>(null);
+  
+  // Estado acumulativo para séries temporais (gráficos)
+  const [timeSeriesHistory, setTimeSeriesHistory] = useState<TimeSeriesHistoryPoint[]>([]);
 
   // Join/leave bridge room
   useEffect(() => {
@@ -69,8 +82,8 @@ export function useTelemetrySocket(bridgeId?: string) {
           : undefined,
       };
 
+      // Atualizar realtimeData (substitui último valor para cards)
       setRealtimeData((prev) => {
-        // Find existing device or append
         const idx = prev.findIndex((d) => d.deviceId === mapped.deviceId);
         if (idx >= 0) {
           const updated = [...prev];
@@ -78,6 +91,23 @@ export function useTelemetrySocket(bridgeId?: string) {
           return updated;
         }
         return [...prev, mapped];
+      });
+
+      // Acumular no timeSeriesHistory (para gráficos - sliding window)
+      const newPoint: TimeSeriesHistoryPoint = {
+        deviceId: event.device_id,
+        timestamp: event.ts,
+        type: event.type === 'freq' ? 'frequency' : 'acceleration',
+        value: event.type === 'freq' ? (peaks[0]?.f ?? 0) : (event.payload.value ?? 0),
+        peak2: event.type === 'freq' ? peaks[1]?.f : undefined,
+        severity: event.payload.severity,
+      };
+
+      setTimeSeriesHistory(prev => {
+        // Manter últimos 50 pontos por device para evitar crescimento infinito
+        const devicePoints = prev.filter(p => p.deviceId === newPoint.deviceId);
+        const otherPoints = prev.filter(p => p.deviceId !== newPoint.deviceId);
+        return [...otherPoints, ...devicePoints.slice(-49), newPoint];
       });
 
       setLastUpdate(new Date());
@@ -93,11 +123,13 @@ export function useTelemetrySocket(bridgeId?: string) {
   // Clear realtime data when bridge changes
   useEffect(() => {
     setRealtimeData([]);
+    setTimeSeriesHistory([]);
     setLastUpdate(null);
   }, [bridgeId]);
 
   return {
     realtimeData,
+    timeSeriesHistory,
     lastUpdate,
     isConnected,
   };

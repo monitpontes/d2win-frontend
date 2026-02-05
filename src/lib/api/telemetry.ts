@@ -166,6 +166,7 @@ export interface TelemetryTimeSeriesPoint {
   timestamp: string;
   type: 'frequency' | 'acceleration';
   value: number;
+  peak2?: number; // Segundo pico de frequência
   severity?: string;
   axis?: 'x' | 'y' | 'z'; // Eixo do sensor, default 'z'
 }
@@ -188,7 +189,7 @@ export async function getHistoryTimeSeries(
   const points: TelemetryTimeSeriesPoint[] = [];
 
   data.items.forEach(item => {
-    // Expand frequency array
+    // Expand frequency array - extract both peaks
     item.freq?.forEach(reading => {
       if (reading.peaks?.[0]?.f) {
         points.push({
@@ -197,6 +198,7 @@ export async function getHistoryTimeSeries(
           timestamp: reading.ts,
           type: 'frequency',
           value: reading.peaks[0].f,
+          peak2: reading.peaks[1]?.f, // Segundo pico
           severity: reading.severity,
         });
       }
