@@ -312,45 +312,40 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 whitespace-nowrap">Sensor</TableHead>
-                    <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 w-10">Eixo</TableHead>
-                    <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 whitespace-nowrap">Último Valor</TableHead>
-                    <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 whitespace-nowrap">Ref.</TableHead>
-                    <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 w-14">Var.</TableHead>
-                    <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 w-8">St.</TableHead>
-                    <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 whitespace-nowrap">Atualizado</TableHead>
+                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Sensor</TableHead>
+                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 w-10">Eixo</TableHead>
+                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Valor</TableHead>
+                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Ref.</TableHead>
+                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 w-8">St.</TableHead>
+                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Atualizado</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isTelemetryLoading && filteredReadings.length === 0 ? (
                     // Show skeleton rows while loading without cache
                     Array.from({ length: 3 }).map((_, idx) => (
-                      <TableRow key={`skeleton-${idx}`} className="h-7">
-                        <TableCell className="py-0.5"><Skeleton className="h-3 w-16" /></TableCell>
-                        <TableCell className="py-0.5"><Skeleton className="h-3 w-6" /></TableCell>
-                        <TableCell className="py-0.5"><Skeleton className="h-3 w-14" /></TableCell>
-                        <TableCell className="py-0.5"><Skeleton className="h-3 w-12" /></TableCell>
-                        <TableCell className="py-0.5"><Skeleton className="h-3 w-10" /></TableCell>
-                        <TableCell className="py-0.5"><Skeleton className="h-2.5 w-2.5 rounded-full" /></TableCell>
-                        <TableCell className="py-0.5"><Skeleton className="h-3 w-16" /></TableCell>
+                      <TableRow key={`skeleton-${idx}`} className="h-8">
+                        <TableCell className="py-1 px-2"><Skeleton className="h-3 w-16" /></TableCell>
+                        <TableCell className="py-1 px-2"><Skeleton className="h-3 w-6" /></TableCell>
+                        <TableCell className="py-1 px-2"><Skeleton className="h-3 w-14" /></TableCell>
+                        <TableCell className="py-1 px-2"><Skeleton className="h-3 w-12" /></TableCell>
+                        <TableCell className="py-1 px-2"><Skeleton className="h-2.5 w-2.5 rounded-full" /></TableCell>
+                        <TableCell className="py-1 px-2"><Skeleton className="h-3 w-16" /></TableCell>
                       </TableRow>
                     ))
                   ) : (
                     filteredReadings.map((reading, idx) => (
-                      <TableRow key={idx} className="h-7">
-                        <TableCell className="text-[11px] font-medium py-0.5 whitespace-nowrap">{reading.sensorName}</TableCell>
-                        <TableCell className="text-[11px] py-0.5">
+                      <TableRow key={idx} className="h-8">
+                        <TableCell className="text-[11px] font-medium py-1 px-2 whitespace-nowrap">{reading.sensorName}</TableCell>
+                        <TableCell className="text-[11px] py-1 px-2">
                           <Badge variant="outline" className="text-[9px] px-1 py-0 text-primary border-primary">
                             {reading.axis}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-[11px] font-medium py-0.5 whitespace-nowrap">{reading.lastValue}</TableCell>
-                        <TableCell className="text-[11px] text-muted-foreground py-0.5 whitespace-nowrap">{reading.reference}</TableCell>
-                        <TableCell className={cn('text-[11px] font-medium py-0.5', getVariationColor(reading.variation))}>
-                          {formatVariation(reading.variation)}
-                        </TableCell>
-                        <TableCell className="py-0.5">{renderStatusIndicator(reading.status)}</TableCell>
-                        <TableCell className="text-[11px] text-muted-foreground py-0.5 whitespace-nowrap">{reading.updatedAt}</TableCell>
+                        <TableCell className="text-[11px] font-medium py-1 px-2 whitespace-nowrap">{reading.lastValue}</TableCell>
+                        <TableCell className="text-[11px] text-muted-foreground py-1 px-2 whitespace-nowrap">{reading.reference}</TableCell>
+                        <TableCell className="py-1 px-2">{renderStatusIndicator(reading.status)}</TableCell>
+                        <TableCell className="text-[11px] text-muted-foreground py-1 px-2 whitespace-nowrap">{reading.updatedAt}</TableCell>
                       </TableRow>
                     ))
                   )}
