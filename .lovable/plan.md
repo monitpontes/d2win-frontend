@@ -1,149 +1,126 @@
 
-# Plano: Garantir Ultimo Valor do Banco na Primeira Carga
 
-## Problema Identificado
+# Plano: Exibir Ultimo Valor do /latest Baseado na Configuracao do Sensor
 
-Quando a pagina carrega:
-1. A API `/telemetry/latest` retorna apenas sensores com leitura recente (online)
-2. Sensores que estao offline ou sem dados recentes aparecem com "-"
-3. O usuario quer ver **sempre** o ultimo valor historico, mesmo de sensores parados
+## Resumo do Problema
 
-### Evidencia nas Imagens
-- Motiva_P1_S01, S03, S04, S05 mostram "-" na tabela
-- Motiva_P1_S02 mostra "9.96 m/s^2" porque teve leitura recente
-- O painel 3D mostra "- Hz" para frequencia e magnitude
+1. O endpoint `/telemetry/latest` retorna AMBOS os dados (`freq` e `accel`) para cada sensor
+2. A funcao `mapApiDeviceToTelemetry` so extrai aceleracao quando `modo_operacao !== 'frequencia'`
+3. Isso causa valores "-" quando o sensor tem dados mas o modo nao bate
 
-## Causa Raiz
+## Solucao
 
-O endpoint `/telemetry/latest` so retorna dispositivos com atividade recente. O endpoint `/telemetry/history` tem os dados historicos, mas a logica de merge prioriza o `latest` e nao preenche sensores ausentes.
+### Fluxo de Dados
 
-## Solucao Proposta
-
-### Estrategia: Merge Inteligente + Polling Agressivo
-
-1. **Inverter a prioridade do merge**: usar `historyData` como base (tem todos os sensores com ultimo valor), depois enriquecer com `latestQuery` e `realtimeData`
-2. **Polling inicial de 5 segundos**: fazer refetch a cada 1 segundo nos primeiros 5 segundos para capturar dados que ainda nao chegaram
-3. **Fallback para cache local**: se nenhum dado da API, usar localStorage
+```text
+┌─────────────────────────────────────────────────────────────┐
+│               PRIMEIRA CARGA DA PAGINA                      │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  GET /telemetry/latest/bridge/{id}                          │
+│                                                             │
+│  Retorna para cada sensor:                                  │
+│    - freq: { peaks: [{f: 3.54, mag: 1433}] }               │
+│    - accel: { value: 9.90 }                                 │
+│    - modo_operacao: "frequencia" ou "aceleracao"            │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  mapApiDeviceToTelemetry (CORRIGIR)                         │
+│                                                             │
+│  ANTES: so extrai accel se !isFrequency                     │
+│  DEPOIS: extrai AMBOS sempre                                │
+│                                                             │
+│  frequency: peaks[0]?.f        → 3.54                       │
+│  acceleration: accel?.value    → 9.90                       │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  BridgeCard.processReading (JA CORRETO)                     │
+│                                                             │
+│  Usa deviceType do banco para decidir qual exibir:          │
+│    - deviceType = 'frequency' → mostra telemetry.frequency  │
+│    - deviceType = 'acceleration' → mostra telemetry.accel.z │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  WebSocket assume para atualizacoes em tempo real           │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Arquivos a Modificar
 
-### 1. src/hooks/useTelemetry.ts
+### 1. src/lib/api/telemetry.ts
 
-**Mudanca principal:** Inverter merge para `historyData` ser a base
+**Funcao:** `mapApiDeviceToTelemetry` (linhas 76-96)
 
-| Antes | Depois |
-|-------|--------|
-| Base = `latestQuery`, fallback = `historyData` | Base = `historyData` (tem todos sensores), enriquece com `latestQuery` |
+**Mudanca:** Remover condicao `!isFrequency` da extracao de aceleracao
 
-```typescript
-// ANTES - prioriza latest (pode ter menos sensores)
-let merged = latestModes.length > 0 
-  ? latestModes.map(latest => ({ ...historyByDevice.get(latest.deviceId), ...latest }))
-  : historyData;
+| Linha | Antes | Depois |
+|-------|-------|--------|
+| 77 | `const isFrequency = device.modo_operacao === 'frequencia';` | Remover (nao precisa mais) |
+| 92-94 | `acceleration: !isFrequency && device.accel?.value !== undefined` | `acceleration: device.accel?.value !== undefined` |
 
-// DEPOIS - base sempre e historico (todos sensores), enriquece com latest
-let merged: TelemetryData[] = historyData.length > 0 
-  ? historyData.map(history => ({
-      ...history,  // Base: ultimo valor do historico
-      ...(latestByDevice.get(history.deviceId) || {}),  // Sobrescreve se tiver latest mais recente
-    }))
-  : latestModes;  // Fallback se historico vazio
-```
-
-**Adicionar:** Polling agressivo nos primeiros 5 segundos
+**Codigo corrigido:**
 
 ```typescript
-// Polling inicial para capturar dados rapidamente
-const [initialPolling, setInitialPolling] = useState(true);
-
-useEffect(() => {
-  if (!bridgeId || !initialPolling) return;
+function mapApiDeviceToTelemetry(device: ApiDeviceTelemetry, bridgeId: string): TelemetryData {
+  const peaks = device.freq?.peaks || [];
   
-  // Polling a cada 1s por 5 segundos
-  const interval = setInterval(() => {
-    latestQuery.refetch();
-    historyQuery.refetch();
-  }, 1000);
-  
-  // Para apos 5 segundos
-  const timeout = setTimeout(() => {
-    setInitialPolling(false);
-    clearInterval(interval);
-  }, 5000);
-  
-  return () => {
-    clearInterval(interval);
-    clearTimeout(timeout);
+  return {
+    deviceId: device.device_id,
+    bridgeId: bridgeId,
+    timestamp: device.last_seen,
+    modoOperacao: device.modo_operacao,
+    status: device.status,
+    // SEMPRE extrair frequencia (primeiro pico)
+    frequency: peaks[0]?.f,
+    magnitude1: peaks[0]?.mag,
+    frequency2: peaks[1]?.f,
+    magnitude2: peaks[1]?.mag,
+    // SEMPRE extrair aceleracao (sem condicao)
+    acceleration: device.accel?.value !== undefined
+      ? { x: 0, y: 0, z: device.accel.value }
+      : undefined,
   };
-}, [bridgeId, initialPolling]);
+}
 ```
 
 ### 2. src/components/dashboard/BridgeCard.tsx
 
-**Mudanca:** Cruzar devices (banco) com telemetry corrigida
-
-A logica ja esta correta (usa `devices` como base), mas precisa garantir que `latestData` agora tera todos os sensores com ultimo valor.
-
-Adicionar indicador visual sutil quando dados sao do cache:
+**Status:** Ja esta correto (linha 88)
 
 ```typescript
-// No footer do card, adicionar indicador se dados sao antigos
-{isFromCache && (
-  <span className="text-xs text-muted-foreground flex items-center gap-1">
-    <Clock className="h-3 w-3" />
-    Dados em cache
-  </span>
-)}
+const isFrequency = deviceType === 'frequency' || telemetry?.modoOperacao === 'frequencia';
 ```
 
-### 3. src/pages/BridgeDetail.tsx
+O `deviceType` vem do banco de dados (configuracao do sensor) e tem prioridade.
 
-Mesma logica - com o merge corrigido no hook, os dados de sensores offline virao preenchidos automaticamente.
+## Resultado Final
 
-## Fluxo de Dados Atualizado
+| Sensor | Configuracao (deviceType) | freq.peaks[0].f | accel.value | Valor Exibido |
+|--------|---------------------------|-----------------|-------------|---------------|
+| Motiva_P1_S01 | frequency | 3.54 | 9.90 | **3.54 Hz** |
+| Motiva_P1_S02 | acceleration | 3.54 | 9.90 | **9.90 m/s²** |
+| Motiva_P1_S03 | frequency | 3.24 | - | **3.24 Hz** |
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                  Pagina Carrega                             │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  1. Carrega localStorage cache (instantaneo)                │
-│  2. Dispara latestQuery + historyQuery em paralelo          │
-│  3. Inicia polling (1s) por 5 segundos                      │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│          Merge Inteligente (historyData como base)          │
-│                                                             │
-│  historyData = [S01: 3.5Hz, S02: 9.96m/s, S03: 3.2Hz, ...]  │
-│  latestData  = [S02: 9.98m/s]  (so online)                  │
-│                                                             │
-│  merged = historyData.map(h => ({ ...h, ...latestByDevice }))│
-│  Resultado: TODOS sensores com ultimo valor conhecido       │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│              WebSocket (tempo real)                         │
-│  Quando chega novo dado, atualiza merged[deviceId]          │
-└─────────────────────────────────────────────────────────────┘
-```
+## Resumo das Alteracoes
 
-## Resultado Esperado
+| Arquivo | O Que Muda |
+|---------|------------|
+| `src/lib/api/telemetry.ts` | Remover `!isFrequency &&` da linha 92 |
+| `src/components/dashboard/BridgeCard.tsx` | Nenhuma (ja correto) |
 
-| Cenario | Antes | Depois |
-|---------|-------|--------|
-| Sensor S01 offline ha 2 dias | Mostra "-" | Mostra "3.50 Hz" (ultimo valor) |
-| Sensor S02 online | Mostra "9.96 m/s^2" | Mostra "9.96 m/s^2" (sem mudanca) |
-| Primeira carga sem cache | Mostra "-" por 200ms | Mostra ultimo valor do historico |
-| WebSocket envia dado novo | Atualiza valor | Atualiza valor (sem mudanca) |
+## Sequencia de Eventos
 
-## Arquivos Modificados
+1. **Pagina carrega** → GET `/telemetry/latest`
+2. **mapApiDeviceToTelemetry** → Extrai AMBOS valores (freq + accel)
+3. **BridgeCard** → Exibe valor baseado no `deviceType` do sensor
+4. **WebSocket conecta** → Assume atualizacoes em tempo real
+5. **Novo dado chega** → Atualiza apenas o sensor especifico
 
-| Arquivo | Alteracao |
-|---------|-----------|
-| `src/hooks/useTelemetry.ts` | Inverter merge + adicionar polling 5s |
-| `src/components/dashboard/BridgeCard.tsx` | Indicador visual de cache (opcional) |
