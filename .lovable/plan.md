@@ -1,102 +1,156 @@
 
-# Plano: Integrar Limites de Ponte com API /bridge-limits
+# Plano: Usar Limites Dinâmicos no Cálculo de Status dos Sensores
 
 ## Objetivo
 
-Substituir valores hardcoded nos gráficos por valores dinâmicos obtidos da API `/bridge-limits?bridge_id={id}`.
+Integrar os valores do banco de dados (`bridge-limits`) no cálculo de status/cores dos sensores, substituindo os valores hardcoded usados atualmente.
 
-## Estrutura da API
+## Situação Atual
 
-**Endpoint:** `GET /bridge-limits?bridge_id={id}`
+| Local | Problema |
+|-------|----------|
+| `getSensorStatus(value, type)` | Usa `DEFAULT_THRESHOLDS` hardcoded |
+| `calculateVariation(value, type)` | Usa `DEFAULT_THRESHOLDS` hardcoded |
+| `getReferenceText(type)` | Usa `DEFAULT_THRESHOLDS` hardcoded |
+| BridgeDetail.tsx | Chama funções sem passar limites da API |
+| BridgeCard.tsx | Chama funções sem passar limites da API |
+| DataAnalysisSection.tsx | Chama funções sem passar limites da API |
 
-**Resposta:**
-```json
-[{
-  "_id": "68d5531b1d01b9883e9f0181",
-  "bridge_id": { "_id": "68b9e38a69deabb365734c4c" },
-  "freq_alert": 3.7,
-  "freq_critical": 7,
-  "accel_alert": 10,
-  "accel_critical": 15
-}]
-```
-
-## Arquivos a Criar
-
-### 1. Serviço de API - `src/lib/api/bridgeLimits.ts`
-
-Novo arquivo para comunicação com a API:
-- Interface `ApiBridgeLimits` (estrutura da API)
-- Interface `BridgeLimits` (formato do frontend)
-- Função `getBridgeLimits(bridgeId)` - GET
-- Função `updateBridgeLimits(bridgeId, data)` - PUT (para salvar)
-
-### 2. Hook React Query - `src/hooks/useBridgeLimits.ts`
-
-Hook para gerenciar estado:
-- `useBridgeLimits(bridgeId)` - retorna `{ limits, isLoading, error }`
-- Usa React Query para cache automático
-- Query key: `['bridge-limits', bridgeId]`
+A boa notícia: as funções **já suportam** thresholds customizados via parâmetro opcional - só não estão sendo usados.
 
 ## Arquivos a Modificar
 
-### 3. Exportar serviço - `src/lib/api/index.ts`
+### 1. Criar Função de Conversão - `src/lib/api/bridgeLimits.ts`
 
-Adicionar:
+Adicionar função helper para converter `BridgeLimits` (API) para `SensorThresholds` (utilitários):
+
 ```typescript
-export { bridgeLimitsService } from './bridgeLimits';
-export type { BridgeLimits } from './bridgeLimits';
+import { type SensorThresholds, DEFAULT_THRESHOLDS } from '@/lib/constants/sensorThresholds';
+
+// Converter BridgeLimits da API para formato SensorThresholds
+export function limitsToThresholds(limits: BridgeLimits | null | undefined): SensorThresholds {
+  if (!limits) return DEFAULT_THRESHOLDS;
+  
+  return {
+    frequency: {
+      normal: limits.freqAlert,           // < freqAlert = Normal
+      attention: limits.freqCritical,     // freqAlert - freqCritical = Atenção
+      alert: limits.freqCritical,         // > freqCritical = Alerta
+      reference: limits.freqAlert,        // Linha de referência
+    },
+    acceleration: {
+      normal: limits.accelAlert,          // < accelAlert = Normal
+      attention: limits.accelCritical,    // accelAlert - accelCritical = Atenção
+      alert: limits.accelCritical,        // > accelCritical = Alerta
+      reference: limits.accelAlert,       // Linha de referência
+    },
+  };
+}
 ```
 
-### 4. Usar limites nos gráficos - `src/pages/BridgeDetail.tsx`
+### 2. Atualizar BridgeDetail.tsx
 
-| Local | Antes | Depois |
-|-------|-------|--------|
-| Importação | - | `import { useBridgeLimits } from '@/hooks/useBridgeLimits'` |
-| Hook | - | `const { limits } = useBridgeLimits(id)` |
-| Linha 512 | `y={3.7}` | `y={limits?.freqAlert ?? 3.7}` |
-| Linha 515 | `'Atenção 3.7'` | `` `Atenção ${limits?.freqAlert ?? 3.7}` `` |
-| Linha 518 | `y={7.0}` | `y={limits?.freqCritical ?? 7.0}` |
-| Linha 521 | `'Alerta 7.0'` | `` `Alerta ${limits?.freqCritical ?? 7.0}` `` |
-| Linha 574 | `y={10}` | `y={limits?.accelAlert ?? 10}` |
-| Linha 577 | `'Atenção 10'` | `` `Atenção ${limits?.accelAlert ?? 10}` `` |
-| Nova linha | - | Adicionar ReferenceLine para `limits?.accelCritical` |
+| Modificação | Antes | Depois |
+|-------------|-------|--------|
+| Importar função | - | `import { limitsToThresholds } from '@/lib/api/bridgeLimits'` |
+| Criar thresholds | - | `const thresholds = useMemo(() => limitsToThresholds(rawLimits), [rawLimits])` |
+| getSensorStatus | `getSensorStatus(value, type)` | `getSensorStatus(value, type, thresholds)` |
 
-### 5. Carregar limites no dialog - `src/components/admin/BridgeDetailsDialog.tsx`
+Locais específicos a atualizar:
+- Linha 98: `getSensorStatus(value, sensorType)` → `getSensorStatus(value, sensorType, thresholds)`
+- Linha 136: `getSensorStatus(value, sensorType)` → `getSensorStatus(value, sensorType, thresholds)`
 
-- Importar e usar `useBridgeLimits`
-- Carregar valores existentes da API no formulário
-- Atualizar `handleSaveLimits` para chamar API
+### 3. Atualizar BridgeCard.tsx
 
-## Valores de Fallback
+| Modificação | Descrição |
+|-------------|-----------|
+| Importar hook | `import { useBridgeLimits } from '@/hooks/useBridgeLimits'` |
+| Importar função | `import { limitsToThresholds } from '@/lib/api/bridgeLimits'` |
+| Buscar limites | `const { rawLimits } = useBridgeLimits(bridge.id)` |
+| Criar thresholds | `const thresholds = useMemo(() => limitsToThresholds(rawLimits), [rawLimits])` |
+| Passar para funções | `getSensorStatus(value, type, thresholds)` |
+| Atualizar variação | `calculateVariation(value, type, thresholds)` |
+| Atualizar referência | `getReferenceText(type, thresholds)` |
 
-Se a API não retornar dados, usar:
+### 4. Atualizar DataAnalysisSection.tsx
 
-| Campo | Fallback |
-|-------|----------|
-| freq_alert | 3.7 Hz |
-| freq_critical | 7.0 Hz |
-| accel_alert | 10 m/s² |
-| accel_critical | 15 m/s² |
+| Modificação | Descrição |
+|-------------|-----------|
+| Importar hook | `import { useBridgeLimits } from '@/hooks/useBridgeLimits'` |
+| Importar função | `import { limitsToThresholds } from '@/lib/api/bridgeLimits'` |
+| Buscar limites | `const { rawLimits } = useBridgeLimits(bridgeId)` |
+| Criar thresholds | `const thresholds = useMemo(() => limitsToThresholds(rawLimits), [rawLimits])` |
+| Passar para funções | Atualizar chamadas de `getSensorStatus` e `calculateVariation` |
+| Atualizar referências | Substituir `DEFAULT_THRESHOLDS.frequency.normal` por `thresholds.frequency.normal` |
 
-## Fluxo de Dados
+### 5. Atualizar useBridgeLimits.ts
+
+Expor `rawLimits` para acesso ao objeto original da API:
+
+```typescript
+return {
+  limits,      // Objeto com fallbacks (nunca null)
+  rawLimits: data,  // Objeto da API ou undefined
+  isLoading,
+  error,
+  refetch,
+};
+```
+
+### 6. Exportar Função - `src/lib/api/index.ts`
+
+```typescript
+export { bridgeLimitsService, limitsToThresholds } from './bridgeLimits';
+```
+
+## Fluxo de Dados Atualizado
 
 ```
-API /bridge-limits?bridge_id=xxx
-         │
-         ▼
-useBridgeLimits(id)
-         │
-    ┌────┴────┐
-    ▼         ▼
-Gráficos   Dialog
-(linhas    (form de
- ref.)     config)
+┌─────────────────────────────────────────────────────────────┐
+│                    API /bridge-limits                       │
+│  { freq_alert: 3.7, freq_critical: 7.0, ... }              │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              useBridgeLimits(bridgeId)                      │
+│  Retorna: { limits, rawLimits, isLoading }                  │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│            limitsToThresholds(rawLimits)                    │
+│  Converte para formato SensorThresholds                     │
+└─────────────────────────────────────────────────────────────┘
+                           │
+           ┌───────────────┼───────────────┐
+           ▼               ▼               ▼
+     ┌──────────┐    ┌──────────┐    ┌──────────┐
+     │getSensor │    │calculate │    │getRefere │
+     │Status()  │    │Variation │    │nceText() │
+     │          │    │          │    │          │
+     │→ Cor do  │    │→ % de    │    │→ Texto   │
+     │  status  │    │  variação│    │  legenda │
+     └──────────┘    └──────────┘    └──────────┘
 ```
 
 ## Resultado Esperado
 
-- Gráficos mostram linhas de referência com valores do banco de dados
-- Legendas exibem valores dinâmicos (ex: "Atenção 4.0" se mudar no banco)
-- Formulário de configuração carrega valores atuais
-- Fallback seguro se API falhar
+| Funcionalidade | Comportamento |
+|----------------|---------------|
+| Indicadores de status (🟢🟡🔴) | Cores calculadas com limites do banco |
+| Variação percentual | Calculada com referência do banco |
+| Texto de referência | Exibe valores do banco (ex: "< 4.0 Hz") |
+| Gráficos (já implementado) | Linhas de referência com valores do banco |
+| Fallback | Se API falhar, usa DEFAULT_THRESHOLDS |
+
+## Arquivos a Modificar
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/lib/api/bridgeLimits.ts` | Adicionar função `limitsToThresholds` |
+| `src/lib/api/index.ts` | Exportar nova função |
+| `src/hooks/useBridgeLimits.ts` | Expor `rawLimits` |
+| `src/pages/BridgeDetail.tsx` | Usar thresholds dinâmicos |
+| `src/components/dashboard/BridgeCard.tsx` | Usar thresholds dinâmicos |
+| `src/components/bridge/DataAnalysisSection.tsx` | Usar thresholds dinâmicos |
