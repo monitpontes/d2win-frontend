@@ -308,7 +308,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
         {viewMode === 'table' ? (
           /* Table View */
           <div className="border rounded-md overflow-hidden">
-            <div className="max-h-[280px] overflow-auto">
+            <div className="max-h-[320px] overflow-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
