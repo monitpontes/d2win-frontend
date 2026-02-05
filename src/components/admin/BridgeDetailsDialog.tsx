@@ -20,6 +20,8 @@ import {
 import { toast } from 'sonner';
 import type { Bridge, StructuralStatus, OperationalCriticality, BridgeTypology } from '@/types';
 import { useBridges } from '@/hooks/useBridges';
+import { useBridgeLimits } from '@/hooks/useBridgeLimits';
+import { bridgeLimitsService } from '@/lib/api/bridgeLimits';
 import { Settings, MapPin, Save, Loader2 } from 'lucide-react';
 
 interface BridgeDetailsDialogProps {
@@ -30,6 +32,8 @@ interface BridgeDetailsDialogProps {
 
 export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetailsDialogProps) {
   const { updateBridge, isUpdating } = useBridges();
+  const { limits: apiLimits, refetch: refetchLimits } = useBridgeLimits(bridge?.id);
+  const [isSavingLimits, setIsSavingLimits] = useState(false);
 
   // Form state initialized from bridge
   const [formData, setFormData] = useState({
@@ -56,9 +60,21 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
   const [limits, setLimits] = useState({
     freqNormalToAlert: 3.7,
     freqAlertToCritical: 7,
-    accelNormalToAlert: 0.5,
-    accelAlertToCritical: 1,
+    accelNormalToAlert: 10,
+    accelAlertToCritical: 15,
   });
+
+  // Load limits from API when available
+  useEffect(() => {
+    if (apiLimits) {
+      setLimits({
+        freqNormalToAlert: apiLimits.freqAlert,
+        freqAlertToCritical: apiLimits.freqCritical,
+        accelNormalToAlert: apiLimits.accelAlert,
+        accelAlertToCritical: apiLimits.accelCritical,
+      });
+    }
+  }, [apiLimits]);
 
   // Update form when bridge changes
   useEffect(() => {
@@ -125,8 +141,26 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
     });
   };
 
-  const handleSaveLimits = () => {
-    toast.success('Limites salvos com sucesso!');
+  const handleSaveLimits = async () => {
+    if (!bridge) return;
+    
+    setIsSavingLimits(true);
+    try {
+      await bridgeLimitsService.updateBridgeLimits(bridge.id, {
+        freqAlert: limits.freqNormalToAlert,
+        freqCritical: limits.freqAlertToCritical,
+        accelAlert: limits.accelNormalToAlert,
+        accelCritical: limits.accelAlertToCritical,
+      });
+      
+      await refetchLimits();
+      toast.success('Limites salvos com sucesso!');
+    } catch (error) {
+      console.error('Error saving limits:', error);
+      toast.error('Erro ao salvar limites');
+    } finally {
+      setIsSavingLimits(false);
+    }
   };
 
   return (
@@ -336,8 +370,15 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
                   </div>
                 </div>
               </div>
-              <Button className="mt-4" variant="outline" onClick={handleSaveLimits}>
-                Salvar Limites
+              <Button className="mt-4" variant="outline" onClick={handleSaveLimits} disabled={isSavingLimits}>
+                {isSavingLimits ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  'Salvar Limites'
+                )}
               </Button>
             </div>
 

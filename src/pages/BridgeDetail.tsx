@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useBridge } from '@/hooks/useBridges';
 import { useDevices } from '@/hooks/useDevices';
 import { useTelemetry } from '@/hooks/useTelemetry';
+import { useBridgeLimits } from '@/hooks/useBridgeLimits';
 import { useAuth } from '@/contexts/AuthContext';
 import { structuralStatusLabels, type StructuralStatus } from '@/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -54,6 +55,7 @@ export default function BridgeDetail() {
   const { bridge, isLoading: isLoadingBridge } = useBridge(id);
   const { devices: sensors, isLoading: isLoadingSensors } = useDevices(undefined, id);
   const { latestData: telemetryData, timeSeriesData, isLoading: isLoadingTelemetry } = useTelemetry(id);
+  const { limits } = useBridgeLimits(id);
   
   // Placeholder data for features not yet connected to API
   const events: BridgeEvent[] = [];
@@ -509,16 +511,16 @@ export default function BridgeDetail() {
                                     }}
                                   />
                                   <ReferenceLine 
-                                    y={3.7} 
+                                    y={limits.freqAlert} 
                                     stroke="hsl(var(--warning))" 
                                     strokeDasharray="4 2"
-                                    label={{ value: 'Atenção 3.7', position: 'right', fontSize: 8, fill: 'hsl(var(--warning))' }}
+                                    label={{ value: `Atenção ${limits.freqAlert}`, position: 'right', fontSize: 8, fill: 'hsl(var(--warning))' }}
                                   />
                                   <ReferenceLine 
-                                    y={7.0} 
+                                    y={limits.freqCritical} 
                                     stroke="hsl(var(--destructive))" 
                                     strokeDasharray="4 2"
-                                    label={{ value: 'Alerta 7.0', position: 'right', fontSize: 8, fill: 'hsl(var(--destructive))' }}
+                                    label={{ value: `Alerta ${limits.freqCritical}`, position: 'right', fontSize: 8, fill: 'hsl(var(--destructive))' }}
                                   />
                                   <Line 
                                     type="monotone" 
@@ -571,10 +573,16 @@ export default function BridgeDetail() {
                                     formatter={(value) => value === 'value' ? 'Aceleração' : value}
                                   />
                                   <ReferenceLine 
-                                    y={10} 
+                                    y={limits.accelAlert} 
                                     stroke="hsl(var(--warning))" 
                                     strokeDasharray="4 2"
-                                    label={{ value: 'Atenção 10', position: 'right', fontSize: 8, fill: 'hsl(var(--warning))' }}
+                                    label={{ value: `Atenção ${limits.accelAlert}`, position: 'right', fontSize: 8, fill: 'hsl(var(--warning))' }}
+                                  />
+                                  <ReferenceLine 
+                                    y={limits.accelCritical} 
+                                    stroke="hsl(var(--destructive))" 
+                                    strokeDasharray="4 2"
+                                    label={{ value: `Alerta ${limits.accelCritical}`, position: 'right', fontSize: 8, fill: 'hsl(var(--destructive))' }}
                                   />
                                   <Line 
                                     type="monotone" 
