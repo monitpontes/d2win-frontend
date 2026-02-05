@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useRef } from 'react';
 import { telemetryService, type TelemetryData, type TelemetryTimeSeriesPoint } from '@/lib/api';
 import { useTelemetrySocket, type TimeSeriesHistoryPoint } from './useTelemetrySocket';
 
@@ -32,16 +32,14 @@ function setCachedData(bridgeId: string, data: TelemetryData[]): void {
 }
 
 export function useTelemetry(bridgeId?: string) {
-  // Socket para dados em tempo real
-  const { realtimeData, timeSeriesHistory, lastUpdate, isConnected } = useTelemetrySocket(bridgeId);
-
-  // Estado local para dados com cache inicial
+  // Estados locais PRIMEIRO (ordem fixa de hooks)
   const [cachedData] = useState<TelemetryData[]>(() => 
     bridgeId ? getCachedData(bridgeId) : []
   );
-
-  // Estado para polling agressivo inicial (5 segundos)
   const [initialPolling, setInitialPolling] = useState(true);
+  
+  // Socket para dados em tempo real
+  const { realtimeData, timeSeriesHistory, lastUpdate, isConnected } = useTelemetrySocket(bridgeId);
 
   // HTTP para dados iniciais (modo_operacao)
   const latestQuery = useQuery({
@@ -67,14 +65,20 @@ export function useTelemetry(bridgeId?: string) {
     staleTime: 5 * 60 * 1000, // 5 minutos - WebSocket atualiza em tempo real
   });
 
+  // Refs para evitar dependências instáveis no useEffect de polling
+  const refetchLatestRef = useRef(latestQuery.refetch);
+  const refetchHistoryRef = useRef(historyQuery.refetch);
+  refetchLatestRef.current = latestQuery.refetch;
+  refetchHistoryRef.current = historyQuery.refetch;
+
   // Polling agressivo nos primeiros 5 segundos para capturar dados rapidamente
   useEffect(() => {
     if (!bridgeId || !initialPolling) return;
     
     // Polling a cada 1s por 5 segundos
     const interval = setInterval(() => {
-      latestQuery.refetch();
-      historyQuery.refetch();
+      refetchLatestRef.current();
+      refetchHistoryRef.current();
     }, 1000);
     
     // Para após 5 segundos
@@ -86,7 +90,7 @@ export function useTelemetry(bridgeId?: string) {
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, [bridgeId, initialPolling, latestQuery, historyQuery]);
+  }, [bridgeId, initialPolling]);
 
   // Combinar: HTTP inicial + WebSocket realtime
   // IMPORTANTE: historyData como base (tem TODOS sensores com último valor conhecido)
