@@ -60,10 +60,13 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
   const [axisFilter, setAxisFilter] = useState<AxisFilter>('all');
 
   // Fetch devices from database first (instant HTTP)
-  const { devices } = useDevices(undefined, bridge.id);
+  const { devices, isLoading: isDevicesLoading } = useDevices(undefined, bridge.id);
   
   // Fetch real telemetry data with cache support
   const { latestData, timeSeriesData, isLoading: isTelemetryLoading } = useTelemetry(bridge.id);
+
+  // Combined loading flag - only show content when BOTH are ready
+  const isDataLoading = isDevicesLoading || isTelemetryLoading;
   
   // Fetch bridge limits and convert to thresholds
   const { rawLimits } = useBridgeLimits(bridge.id);
@@ -277,151 +280,156 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
       </CardHeader>
 
       <CardContent className="flex-1 pb-3">
-        {/* View Toggle and Axis Filter */}
-        <div className="flex items-center justify-between mb-3">
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-auto">
-            <TabsList className="h-8">
-              <TabsTrigger value="table" className="h-7 px-2 text-xs">
-                <TableIcon className="h-3.5 w-3.5 mr-1" />
-                Tabela
-              </TabsTrigger>
-              <TabsTrigger value="chart" className="h-7 px-2 text-xs">
-                <LineChart className="h-3.5 w-3.5 mr-1" />
-                Gráfico
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-
-          <Select value={axisFilter} onValueChange={(v) => setAxisFilter(v as AxisFilter)}>
-            <SelectTrigger className="w-[100px] h-8 text-xs">
-              <SelectValue placeholder="Eixos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos Eixos</SelectItem>
-              <SelectItem value="X">Eixo X</SelectItem>
-              <SelectItem value="Y">Eixo Y</SelectItem>
-              <SelectItem value="Z">Eixo Z</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {viewMode === 'table' ? (
-          /* Table View */
-          <div className="border rounded-md overflow-hidden">
-            <div className="max-h-[320px] overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Sensor</TableHead>
-                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 w-10">Eixo</TableHead>
-                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Valor</TableHead>
-                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Ref.</TableHead>
-                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 w-8">St.</TableHead>
-                    <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Atualizado</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isTelemetryLoading && filteredReadings.length === 0 ? (
-                    // Show skeleton rows while loading without cache
-                    Array.from({ length: 3 }).map((_, idx) => (
-                      <TableRow key={`skeleton-${idx}`} className="h-8">
-                        <TableCell className="py-1 px-2"><Skeleton className="h-3 w-16" /></TableCell>
-                        <TableCell className="py-1 px-2"><Skeleton className="h-3 w-6" /></TableCell>
-                        <TableCell className="py-1 px-2"><Skeleton className="h-3 w-14" /></TableCell>
-                        <TableCell className="py-1 px-2"><Skeleton className="h-3 w-12" /></TableCell>
-                        <TableCell className="py-1 px-2"><Skeleton className="h-2.5 w-2.5 rounded-full" /></TableCell>
-                        <TableCell className="py-1 px-2"><Skeleton className="h-3 w-16" /></TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    filteredReadings.map((reading, idx) => (
-                      <TableRow key={idx} className="h-8">
-                        <TableCell className="text-[11px] font-medium py-1 px-2 whitespace-nowrap">{reading.sensorName}</TableCell>
-                        <TableCell className="text-[11px] py-1 px-2">
-                          <Badge variant="outline" className="text-[9px] px-1 py-0 text-primary border-primary">
-                            {reading.axis}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-[11px] font-medium py-1 px-2 whitespace-nowrap">{reading.lastValue}</TableCell>
-                        <TableCell className="text-[11px] text-muted-foreground py-1 px-2 whitespace-nowrap">{reading.reference}</TableCell>
-                        <TableCell className="py-1 px-2">{renderStatusIndicator(reading.status)}</TableCell>
-                        <TableCell className="text-[11px] text-muted-foreground py-1 px-2 whitespace-nowrap">{reading.updatedAt}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+        {isDataLoading ? (
+          /* Loading State - shows skeleton while devices and telemetry load */
+          <div className="flex flex-col items-center justify-center py-8 space-y-3">
+            <div className="flex space-x-2">
+              <Skeleton className="h-4 w-4 rounded-full animate-pulse" />
+              <Skeleton className="h-4 w-4 rounded-full animate-pulse" />
+              <Skeleton className="h-4 w-4 rounded-full animate-pulse" />
+            </div>
+            <p className="text-sm text-muted-foreground">Carregando dados dos sensores...</p>
+            <div className="w-full space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
             </div>
           </div>
         ) : (
-          /* Chart View */
-          <div className="space-y-3">
-            <div className="text-xs font-medium text-muted-foreground">Últimos Dados por Sensor</div>
-            
-            {/* Frequency Chart */}
-            <div className="border rounded-md p-2">
-              <div className="text-xs font-medium mb-2">Frequência (Hz) - Eixo Z</div>
-              <div className="h-[100px]">
-                {chartData.frequency.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                    Sem dados de frequência disponíveis
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsLine data={chartData.frequency}>
-                      <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                      <YAxis domain={[0, 8]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                      <Tooltip />
-                      <ReferenceLine 
-                        y={chartData.thresholds.frequency.reference} 
-                        stroke="hsl(var(--muted-foreground))" 
-                        strokeDasharray="4 2" 
-                        label={{ value: `Ref ${chartData.thresholds.frequency.reference}`, fontSize: 8, fill: 'hsl(var(--muted-foreground))' }}
-                      />
-                      <ReferenceLine 
-                        y={chartData.thresholds.frequency.attention} 
-                        stroke="hsl(var(--warning))" 
-                        strokeDasharray="4 2"
-                      />
-                      <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={{ r: 2 }} name="Freq Z" />
-                    </RechartsLine>
-                  </ResponsiveContainer>
-                )}
-              </div>
+          <>
+            {/* View Toggle and Axis Filter */}
+            <div className="flex items-center justify-between mb-3">
+              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-auto">
+                <TabsList className="h-8">
+                  <TabsTrigger value="table" className="h-7 px-2 text-xs">
+                    <TableIcon className="h-3.5 w-3.5 mr-1" />
+                    Tabela
+                  </TabsTrigger>
+                  <TabsTrigger value="chart" className="h-7 px-2 text-xs">
+                    <LineChart className="h-3.5 w-3.5 mr-1" />
+                    Gráfico
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              <Select value={axisFilter} onValueChange={(v) => setAxisFilter(v as AxisFilter)}>
+                <SelectTrigger className="w-[100px] h-8 text-xs">
+                  <SelectValue placeholder="Eixos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos Eixos</SelectItem>
+                  <SelectItem value="X">Eixo X</SelectItem>
+                  <SelectItem value="Y">Eixo Y</SelectItem>
+                  <SelectItem value="Z">Eixo Z</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Acceleration Chart */}
-            <div className="border rounded-md p-2">
-              <div className="text-xs font-medium mb-2">Aceleração (m/s²) - Eixo Z</div>
-              <div className="h-[80px]">
-                {chartData.acceleration.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                    Sem dados de aceleração disponíveis
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsLine data={chartData.acceleration}>
-                      <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                      <YAxis domain={[5, 12]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                      <Tooltip />
-                      <ReferenceLine 
-                        y={chartData.thresholds.acceleration.normal} 
-                        stroke="hsl(var(--warning))" 
-                        strokeDasharray="4 2" 
-                        label={{ value: `Atenção ${chartData.thresholds.acceleration.normal}`, fontSize: 8, fill: 'hsl(var(--warning))' }}
-                      />
-                      <ReferenceLine 
-                        y={chartData.thresholds.acceleration.alert} 
-                        stroke="hsl(var(--destructive))" 
-                        strokeDasharray="4 2"
-                      />
-                      <Line type="monotone" dataKey="value" stroke="hsl(var(--chart-2))" strokeWidth={1.5} dot={{ r: 2 }} name="Acel Z" />
-                    </RechartsLine>
-                  </ResponsiveContainer>
-                )}
+            {viewMode === 'table' ? (
+              /* Table View */
+              <div className="border rounded-md overflow-hidden">
+                <div className="max-h-[320px] overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Sensor</TableHead>
+                        <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 w-10">Eixo</TableHead>
+                        <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Valor</TableHead>
+                        <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Ref.</TableHead>
+                        <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 w-8">St.</TableHead>
+                        <TableHead className="text-[11px] h-8 py-1 px-2 sticky top-0 bg-muted/95 whitespace-nowrap">Atualizado</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredReadings.map((reading, idx) => (
+                        <TableRow key={idx} className="h-8">
+                          <TableCell className="text-[11px] font-medium py-1 px-2 whitespace-nowrap">{reading.sensorName}</TableCell>
+                          <TableCell className="text-[11px] py-1 px-2">
+                            <Badge variant="outline" className="text-[9px] px-1 py-0 text-primary border-primary">
+                              {reading.axis}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-[11px] font-medium py-1 px-2 whitespace-nowrap">{reading.lastValue}</TableCell>
+                          <TableCell className="text-[11px] text-muted-foreground py-1 px-2 whitespace-nowrap">{reading.reference}</TableCell>
+                          <TableCell className="py-1 px-2">{renderStatusIndicator(reading.status)}</TableCell>
+                          <TableCell className="text-[11px] text-muted-foreground py-1 px-2 whitespace-nowrap">{reading.updatedAt}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
-            </div>
-          </div>
+            ) : (
+              /* Chart View */
+              <div className="space-y-3">
+                <div className="text-xs font-medium text-muted-foreground">Últimos Dados por Sensor</div>
+                
+                {/* Frequency Chart */}
+                <div className="border rounded-md p-2">
+                  <div className="text-xs font-medium mb-2">Frequência (Hz) - Eixo Z</div>
+                  <div className="h-[100px]">
+                    {chartData.frequency.length === 0 ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                        Sem dados de frequência disponíveis
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RechartsLine data={chartData.frequency}>
+                          <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                          <YAxis domain={[0, 8]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                          <Tooltip />
+                          <ReferenceLine 
+                            y={chartData.thresholds.frequency.reference} 
+                            stroke="hsl(var(--muted-foreground))" 
+                            strokeDasharray="4 2" 
+                            label={{ value: `Ref ${chartData.thresholds.frequency.reference}`, fontSize: 8, fill: 'hsl(var(--muted-foreground))' }}
+                          />
+                          <ReferenceLine 
+                            y={chartData.thresholds.frequency.attention} 
+                            stroke="hsl(var(--warning))" 
+                            strokeDasharray="4 2"
+                          />
+                          <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={{ r: 2 }} name="Freq Z" />
+                        </RechartsLine>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </div>
+
+                {/* Acceleration Chart */}
+                <div className="border rounded-md p-2">
+                  <div className="text-xs font-medium mb-2">Aceleração (m/s²) - Eixo Z</div>
+                  <div className="h-[80px]">
+                    {chartData.acceleration.length === 0 ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                        Sem dados de aceleração disponíveis
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RechartsLine data={chartData.acceleration}>
+                          <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                          <YAxis domain={[5, 12]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                          <Tooltip />
+                          <ReferenceLine 
+                            y={chartData.thresholds.acceleration.normal} 
+                            stroke="hsl(var(--warning))" 
+                            strokeDasharray="4 2" 
+                            label={{ value: `Atenção ${chartData.thresholds.acceleration.normal}`, fontSize: 8, fill: 'hsl(var(--warning))' }}
+                          />
+                          <ReferenceLine 
+                            y={chartData.thresholds.acceleration.alert} 
+                            stroke="hsl(var(--destructive))" 
+                            strokeDasharray="4 2"
+                          />
+                          <Line type="monotone" dataKey="value" stroke="hsl(var(--chart-2))" strokeWidth={1.5} dot={{ r: 2 }} name="Acel Z" />
+                        </RechartsLine>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Footer Stats */}
