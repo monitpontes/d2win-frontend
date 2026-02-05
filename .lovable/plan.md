@@ -1,126 +1,192 @@
 
+# Plano: Otimizar Chamadas HTTP - 1 Query Inicial + WebSocket
 
-# Plano: Exibir Ultimo Valor do /latest Baseado na Configuracao do Sensor
+## Objetivo
 
-## Resumo do Problema
+Reduzir drasticamente as queries ao banco de dados:
+- Dashboard: 1x `/latest` + 1x `/timeseries`
+- BridgePage: 1x `/latest` + 1x `/timeseries`
+- WebSocket assume imediatamente após carga inicial
 
-1. O endpoint `/telemetry/latest` retorna AMBOS os dados (`freq` e `accel`) para cada sensor
-2. A funcao `mapApiDeviceToTelemetry` so extrai aceleracao quando `modo_operacao !== 'frequencia'`
-3. Isso causa valores "-" quando o sensor tem dados mas o modo nao bate
+## Mudanças
 
-## Solucao
+### 1. src/hooks/useTelemetry.ts (reescrever)
 
-### Fluxo de Dados
+**Remover:**
+- Cache localStorage (desnecessário com WebSocket)
+- Polling de 5 segundos
+- `historyQuery` (não usado)
+- Estados `initialPolling` e `cachedData`
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│               PRIMEIRA CARGA DA PAGINA                      │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  GET /telemetry/latest/bridge/{id}                          │
-│                                                             │
-│  Retorna para cada sensor:                                  │
-│    - freq: { peaks: [{f: 3.54, mag: 1433}] }               │
-│    - accel: { value: 9.90 }                                 │
-│    - modo_operacao: "frequencia" ou "aceleracao"            │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  mapApiDeviceToTelemetry (CORRIGIR)                         │
-│                                                             │
-│  ANTES: so extrai accel se !isFrequency                     │
-│  DEPOIS: extrai AMBOS sempre                                │
-│                                                             │
-│  frequency: peaks[0]?.f        → 3.54                       │
-│  acceleration: accel?.value    → 9.90                       │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  BridgeCard.processReading (JA CORRETO)                     │
-│                                                             │
-│  Usa deviceType do banco para decidir qual exibir:          │
-│    - deviceType = 'frequency' → mostra telemetry.frequency  │
-│    - deviceType = 'acceleration' → mostra telemetry.accel.z │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  WebSocket assume para atualizacoes em tempo real           │
-└─────────────────────────────────────────────────────────────┘
-```
+**Manter:**
+- `latestQuery` - 1 chamada no mount
+- `timeSeriesQuery` - 1 chamada no mount (para gráficos)
+- WebSocket merge para atualizações em tempo real
 
-## Arquivos a Modificar
-
-### 1. src/lib/api/telemetry.ts
-
-**Funcao:** `mapApiDeviceToTelemetry` (linhas 76-96)
-
-**Mudanca:** Remover condicao `!isFrequency` da extracao de aceleracao
-
-| Linha | Antes | Depois |
-|-------|-------|--------|
-| 77 | `const isFrequency = device.modo_operacao === 'frequencia';` | Remover (nao precisa mais) |
-| 92-94 | `acceleration: !isFrequency && device.accel?.value !== undefined` | `acceleration: device.accel?.value !== undefined` |
-
-**Codigo corrigido:**
+**Código otimizado:**
 
 ```typescript
-function mapApiDeviceToTelemetry(device: ApiDeviceTelemetry, bridgeId: string): TelemetryData {
-  const peaks = device.freq?.peaks || [];
+import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { telemetryService, type TelemetryData, type TelemetryTimeSeriesPoint } from '@/lib/api';
+import { useTelemetrySocket } from './useTelemetrySocket';
+
+export interface TelemetryHistoryData extends TelemetryData {
+  // Extended fields for history
+}
+
+export interface UseTelemetryOptions {
+  includeTimeSeries?: boolean;
+}
+
+export function useTelemetry(bridgeId?: string, options?: UseTelemetryOptions) {
+  const { includeTimeSeries = true } = options || {};
   
+  // Socket para dados em tempo real
+  const { realtimeData, timeSeriesHistory, lastUpdate, isConnected } = useTelemetrySocket(bridgeId);
+
+  // HTTP ÚNICA para dados iniciais - só executa 1 vez no mount
+  const latestQuery = useQuery({
+    queryKey: ['telemetry', 'latest', bridgeId],
+    queryFn: () => telemetryService.getLatestByBridge(bridgeId!),
+    enabled: !!bridgeId,
+    staleTime: Infinity,  // Nunca refetch automático - WebSocket assume
+    refetchOnWindowFocus: false,
+    refetchOnMount: 'always',  // Sempre busca ao montar (1 vez)
+    refetchOnReconnect: false,
+  });
+
+  // HTTP para série temporal (gráficos) - SÓ se includeTimeSeries=true
+  const timeSeriesQuery = useQuery({
+    queryKey: ['telemetry', 'timeseries', bridgeId],
+    queryFn: () => telemetryService.getHistoryTimeSeries(bridgeId!, { limit: 100 }),
+    enabled: !!bridgeId && includeTimeSeries,
+    staleTime: Infinity,  // Nunca refetch automático - WebSocket faz append
+    refetchOnWindowFocus: false,
+    refetchOnMount: 'always',
+    refetchOnReconnect: false,
+  });
+
+  // Combinar: HTTP inicial + WebSocket realtime
+  const latestData = useMemo(() => {
+    const httpData = latestQuery.data || [];
+    
+    // Clonar para não mutar array original
+    const merged = [...httpData];
+    
+    // WebSocket atualiza em tempo real (substitui valores existentes)
+    realtimeData.forEach((rt) => {
+      const idx = merged.findIndex((m) => m.deviceId === rt.deviceId);
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...rt };
+      } else {
+        merged.push(rt);
+      }
+    });
+
+    return merged;
+  }, [latestQuery.data, realtimeData]);
+
+  // TimeSeries: HTTP inicial + WebSocket append
+  const timeSeriesData = useMemo(() => {
+    if (!includeTimeSeries) return [];
+    
+    const historical = timeSeriesQuery.data || [];
+    
+    // Converter timeSeriesHistory do WebSocket para formato TelemetryTimeSeriesPoint
+    const wsPoints: TelemetryTimeSeriesPoint[] = timeSeriesHistory.map(p => ({
+      deviceId: p.deviceId,
+      bridgeId: bridgeId || '',
+      timestamp: p.timestamp,
+      type: p.type,
+      value: p.value,
+      peak2: p.peak2,
+      severity: p.severity,
+    }));
+
+    // Evitar duplicatas por deviceId + timestamp
+    const existingKeys = new Set(
+      historical.map(p => `${p.deviceId}-${p.timestamp}`)
+    );
+    const uniqueNew = wsPoints.filter(
+      p => !existingKeys.has(`${p.deviceId}-${p.timestamp}`)
+    );
+
+    // Merge, ordenar e manter últimos 200 pontos
+    return [...historical, ...uniqueNew]
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .slice(-200);
+  }, [timeSeriesQuery.data, timeSeriesHistory, bridgeId, includeTimeSeries]);
+
   return {
-    deviceId: device.device_id,
-    bridgeId: bridgeId,
-    timestamp: device.last_seen,
-    modoOperacao: device.modo_operacao,
-    status: device.status,
-    // SEMPRE extrair frequencia (primeiro pico)
-    frequency: peaks[0]?.f,
-    magnitude1: peaks[0]?.mag,
-    frequency2: peaks[1]?.f,
-    magnitude2: peaks[1]?.mag,
-    // SEMPRE extrair aceleracao (sem condicao)
-    acceleration: device.accel?.value !== undefined
-      ? { x: 0, y: 0, z: device.accel.value }
-      : undefined,
+    latestData,
+    timeSeriesData,
+    realtimeData,
+    isLoading: latestQuery.isLoading,
+    isLoadingTimeSeries: timeSeriesQuery.isLoading,
+    isConnected,
+    lastUpdate,
+    refetchLatest: latestQuery.refetch,
+    refetchTimeSeries: timeSeriesQuery.refetch,
   };
+}
+
+export function useTelemetryByCompany(companyId?: string) {
+  return useQuery({
+    queryKey: ['telemetry', 'company', companyId],
+    queryFn: () => telemetryService.getLatestByCompany(companyId!),
+    enabled: !!companyId,
+    staleTime: Infinity,  // WebSocket assume
+    refetchOnWindowFocus: false,
+    refetchOnMount: 'always',
+    refetchOnReconnect: false,
+  });
 }
 ```
 
-### 2. src/components/dashboard/BridgeCard.tsx
+### 2. Componentes que usam useTelemetry (verificar compatibilidade)
 
-**Status:** Ja esta correto (linha 88)
+Os componentes que usam `historyData`, `isFromCache`, `isLoadingHistory`, `isLoadingLatest`, `refetchHistory` precisam ser atualizados:
 
-```typescript
-const isFrequency = deviceType === 'frequency' || telemetry?.modoOperacao === 'frequencia';
+| Propriedade Removida | Substituição |
+|---------------------|--------------|
+| `historyData` | Remover uso (não utilizado) |
+| `isFromCache` | Remover (cache eliminado) |
+| `isLoadingHistory` | Usar `isLoading` |
+| `isLoadingLatest` | Usar `isLoading` |
+| `refetchHistory` | Remover |
+
+## Fluxo Final
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  Página carrega (Dashboard ou BridgePage)                   │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  1x GET /telemetry/latest → valores para cards              │
+│  1x GET /telemetry/timeseries → dados para gráficos         │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  WebSocket conecta → join_bridge                            │
+│  Eventos "telemetry" atualizam em tempo real                │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Nenhuma query HTTP adicional                               │
+│  Apenas WebSocket mantém dados atualizados                  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-O `deviceType` vem do banco de dados (configuracao do sensor) e tem prioridade.
+## Economia
 
-## Resultado Final
-
-| Sensor | Configuracao (deviceType) | freq.peaks[0].f | accel.value | Valor Exibido |
-|--------|---------------------------|-----------------|-------------|---------------|
-| Motiva_P1_S01 | frequency | 3.54 | 9.90 | **3.54 Hz** |
-| Motiva_P1_S02 | acceleration | 3.54 | 9.90 | **9.90 m/s²** |
-| Motiva_P1_S03 | frequency | 3.24 | - | **3.24 Hz** |
-
-## Resumo das Alteracoes
-
-| Arquivo | O Que Muda |
-|---------|------------|
-| `src/lib/api/telemetry.ts` | Remover `!isFrequency &&` da linha 92 |
-| `src/components/dashboard/BridgeCard.tsx` | Nenhuma (ja correto) |
-
-## Sequencia de Eventos
-
-1. **Pagina carrega** → GET `/telemetry/latest`
-2. **mapApiDeviceToTelemetry** → Extrai AMBOS valores (freq + accel)
-3. **BridgeCard** → Exibe valor baseado no `deviceType` do sensor
-4. **WebSocket conecta** → Assume atualizacoes em tempo real
-5. **Novo dado chega** → Atualiza apenas o sensor especifico
-
+| Métrica | Antes | Depois |
+|---------|-------|--------|
+| Queries iniciais | 3 | 2 |
+| Polling (5s) | ~10 queries | 0 |
+| Total por carga | ~13 queries | 2 queries |
+| Redução | - | **~85%** |
