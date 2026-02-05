@@ -1,93 +1,102 @@
 
-# Plano: Configurar Eixos Y e Adicionar Linhas de Referência nos Gráficos
+# Plano: Integrar Limites de Ponte com API /bridge-limits
 
 ## Objetivo
 
-Atualizar os gráficos de "Últimas Leituras" para:
-1. Eixo Y fixo com unidades visíveis
-2. Linhas de referência para níveis de alerta e crítico com cores e legenda
+Substituir valores hardcoded nos gráficos por valores dinâmicos obtidos da API `/bridge-limits?bridge_id={id}`.
 
-## Configurações Desejadas
+## Estrutura da API
 
-| Gráfico | Eixo Y | Unidade | Linha Atenção | Linha Alerta/Crítico |
-|---------|--------|---------|---------------|---------------------|
-| Aceleração | 5 a 12 | m/s² | 10 m/s² (amarelo) | 20 m/s² (vermelho) |
-| Frequência | 0 a 8 | Hz | 3.7 Hz (amarelo) | 7.0 Hz (vermelho) |
+**Endpoint:** `GET /bridge-limits?bridge_id={id}`
 
-## Alterações Técnicas
-
-### Arquivo: `src/pages/BridgeDetail.tsx`
-
-#### Gráfico de Frequência (linhas 486-523)
-
-Adicionar:
-- `domain={[0, 8]}` no YAxis para fixar escala 0-8 Hz
-- `unit=" Hz"` no YAxis para mostrar unidade
-- `ReferenceLine` para atenção (3.7 Hz) com cor amarela
-- `ReferenceLine` para alerta (7.0 Hz) com cor vermelha
-- Atualizar Legend para incluir as linhas de referência
-
-```tsx
-<YAxis 
-  tick={{ fontSize: 9 }} 
-  domain={[0, 8]}    // Fixo 0 a 8 Hz
-  width={50}
-  tickFormatter={(v) => `${v.toFixed(1)}`}
-  label={{ value: 'Hz', angle: -90, position: 'insideLeft', fontSize: 9 }}
-/>
-<ReferenceLine 
-  y={3.7} 
-  stroke="hsl(var(--warning))" 
-  strokeDasharray="4 2"
-  label={{ value: 'Atenção 3.7', position: 'right', fontSize: 8, fill: 'hsl(var(--warning))' }}
-/>
-<ReferenceLine 
-  y={7.0} 
-  stroke="hsl(var(--destructive))" 
-  strokeDasharray="4 2"
-  label={{ value: 'Alerta 7.0', position: 'right', fontSize: 8, fill: 'hsl(var(--destructive))' }}
-/>
+**Resposta:**
+```json
+[{
+  "_id": "68d5531b1d01b9883e9f0181",
+  "bridge_id": { "_id": "68b9e38a69deabb365734c4c" },
+  "freq_alert": 3.7,
+  "freq_critical": 7,
+  "accel_alert": 10,
+  "accel_critical": 15
+}]
 ```
 
-#### Gráfico de Aceleração (linhas 524-559)
+## Arquivos a Criar
+
+### 1. Serviço de API - `src/lib/api/bridgeLimits.ts`
+
+Novo arquivo para comunicação com a API:
+- Interface `ApiBridgeLimits` (estrutura da API)
+- Interface `BridgeLimits` (formato do frontend)
+- Função `getBridgeLimits(bridgeId)` - GET
+- Função `updateBridgeLimits(bridgeId, data)` - PUT (para salvar)
+
+### 2. Hook React Query - `src/hooks/useBridgeLimits.ts`
+
+Hook para gerenciar estado:
+- `useBridgeLimits(bridgeId)` - retorna `{ limits, isLoading, error }`
+- Usa React Query para cache automático
+- Query key: `['bridge-limits', bridgeId]`
+
+## Arquivos a Modificar
+
+### 3. Exportar serviço - `src/lib/api/index.ts`
 
 Adicionar:
-- `domain={[5, 12]}` no YAxis para fixar escala 5-12 m/s²
-- `unit=" m/s²"` no YAxis para mostrar unidade
-- `ReferenceLine` para atenção (10 m/s²) com cor amarela
-- `ReferenceLine` para alerta (20 m/s²) - nota: 20 está fora do range 5-12, então não será visível
-
-```tsx
-<YAxis 
-  tick={{ fontSize: 9 }} 
-  domain={[5, 12]}    // Fixo 5 a 12 m/s²
-  width={55}
-  tickFormatter={(v) => `${v.toFixed(1)}`}
-  label={{ value: 'm/s²', angle: -90, position: 'insideLeft', fontSize: 9 }}
-/>
-<ReferenceLine 
-  y={10} 
-  stroke="hsl(var(--warning))" 
-  strokeDasharray="4 2"
-  label={{ value: 'Atenção', position: 'right', fontSize: 8, fill: 'hsl(var(--warning))' }}
-/>
+```typescript
+export { bridgeLimitsService } from './bridgeLimits';
+export type { BridgeLimits } from './bridgeLimits';
 ```
 
-**Nota sobre aceleração**: Com o range 5-12 m/s², a linha de alerta crítico (20 m/s²) ficará fora da área visível. Se os dados ultrapassarem 12, será necessário expandir o domínio.
+### 4. Usar limites nos gráficos - `src/pages/BridgeDetail.tsx`
 
-## Resumo das Mudanças
+| Local | Antes | Depois |
+|-------|-------|--------|
+| Importação | - | `import { useBridgeLimits } from '@/hooks/useBridgeLimits'` |
+| Hook | - | `const { limits } = useBridgeLimits(id)` |
+| Linha 512 | `y={3.7}` | `y={limits?.freqAlert ?? 3.7}` |
+| Linha 515 | `'Atenção 3.7'` | `` `Atenção ${limits?.freqAlert ?? 3.7}` `` |
+| Linha 518 | `y={7.0}` | `y={limits?.freqCritical ?? 7.0}` |
+| Linha 521 | `'Alerta 7.0'` | `` `Alerta ${limits?.freqCritical ?? 7.0}` `` |
+| Linha 574 | `y={10}` | `y={limits?.accelAlert ?? 10}` |
+| Linha 577 | `'Atenção 10'` | `` `Atenção ${limits?.accelAlert ?? 10}` `` |
+| Nova linha | - | Adicionar ReferenceLine para `limits?.accelCritical` |
 
-| Componente | Antes | Depois |
-|------------|-------|--------|
-| Frequência - YAxis domain | auto | `[0, 8]` |
-| Frequência - Linhas de ref | nenhuma | 3.7 Hz (amarelo), 7.0 Hz (vermelho) |
-| Aceleração - YAxis domain | auto | `[5, 12]` |
-| Aceleração - Linhas de ref | nenhuma | 10 m/s² (amarelo) |
-| Unidades nos eixos | não | sim (Hz e m/s²) |
+### 5. Carregar limites no dialog - `src/components/admin/BridgeDetailsDialog.tsx`
+
+- Importar e usar `useBridgeLimits`
+- Carregar valores existentes da API no formulário
+- Atualizar `handleSaveLimits` para chamar API
+
+## Valores de Fallback
+
+Se a API não retornar dados, usar:
+
+| Campo | Fallback |
+|-------|----------|
+| freq_alert | 3.7 Hz |
+| freq_critical | 7.0 Hz |
+| accel_alert | 10 m/s² |
+| accel_critical | 15 m/s² |
+
+## Fluxo de Dados
+
+```
+API /bridge-limits?bridge_id=xxx
+         │
+         ▼
+useBridgeLimits(id)
+         │
+    ┌────┴────┐
+    ▼         ▼
+Gráficos   Dialog
+(linhas    (form de
+ ref.)     config)
+```
 
 ## Resultado Esperado
 
-- Gráficos com escala fixa e previsível
-- Linhas de referência coloridas indicando níveis de atenção (amarelo) e alerta (vermelho)
-- Unidades de medida visíveis no eixo Y
-- Fácil identificação visual de quando valores ultrapassam limites
+- Gráficos mostram linhas de referência com valores do banco de dados
+- Legendas exibem valores dinâmicos (ex: "Atenção 4.0" se mudar no banco)
+- Formulário de configuração carrega valores atuais
+- Fallback seguro se API falhar
