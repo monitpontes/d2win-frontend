@@ -34,8 +34,8 @@ export function Header() {
 
   const getRoleName = (role: string) => {
     const roles: Record<string, string> = {
-      admin: 'Administrador',
-      gestor: 'Engenheiro',
+      admin: 'Admin Global',
+      gestor: 'Admin Empresa',
       viewer: 'Visualizador',
     };
     return roles[role] || role;

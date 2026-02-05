@@ -16,13 +16,12 @@ interface CompanySidebarProps {
 }
 
 export function CompanySidebar({ selectedCompanyId, onSelectCompany }: CompanySidebarProps) {
-  const { hasRole } = useAuth();
+  const { hasRole, isGlobalAdmin } = useAuth();
+  const showGlobalAdmin = isGlobalAdmin();
   const { companies, isLoading, createCompany, isCreating } = useCompanies();
   const [collapsed, setCollapsed] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newCompany, setNewCompany] = useState({ name: '', description: '' });
-
-  const isAdmin = hasRole('admin');
 
   const handleAddCompany = () => {
     if (newCompany.name.trim()) {
@@ -62,19 +61,21 @@ export function CompanySidebar({ selectedCompanyId, onSelectCompany }: CompanySi
       {/* Company List */}
       <ScrollArea className="flex-1">
         <div className="p-2">
-          {/* All Companies Option */}
-          <button
-            onClick={() => onSelectCompany('all')}
-            className={cn(
-              'mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-              selectedCompanyId === 'all'
-                ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                : 'text-sidebar-foreground hover:bg-sidebar-accent'
-            )}
-          >
-            <Building2 className="h-4 w-4 shrink-0" />
-            {!collapsed && <span>Todas as Empresas</span>}
-          </button>
+          {/* Opção "Todas as Empresas" - só para Admin Global */}
+          {showGlobalAdmin && (
+            <button
+              onClick={() => onSelectCompany('all')}
+              className={cn(
+                'mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                selectedCompanyId === 'all'
+                  ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent'
+              )}
+            >
+              <Building2 className="h-4 w-4 shrink-0" />
+              {!collapsed && <span>Todas as Empresas</span>}
+            </button>
+          )}
 
           {/* Loading State */}
           {isLoading ? (
@@ -115,8 +116,8 @@ export function CompanySidebar({ selectedCompanyId, onSelectCompany }: CompanySi
         </div>
       </ScrollArea>
 
-      {/* Add Company Button (Admin only) */}
-      {isAdmin && (
+      {/* Botão Nova Empresa - só para Admin Global */}
+      {showGlobalAdmin && (
         <div className="border-t border-sidebar-border p-2">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>

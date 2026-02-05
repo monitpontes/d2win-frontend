@@ -1,7 +1,8 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import type { DashboardFilters, StructuralStatus } from '@/types';
 import { structuralStatusLabels } from '@/types';
 import { useBridges } from '@/hooks/useBridges';
+import { useAuth } from '@/contexts/AuthContext';
 import { CompanySidebar } from '@/components/layout/CompanySidebar';
 import { BridgeCard } from '@/components/dashboard/BridgeCard';
 import { DashboardFiltersComponent } from '@/components/dashboard/DashboardFilters';
@@ -28,11 +29,24 @@ const defaultFilters: DashboardFilters = {
 };
 
 export default function Dashboard() {
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
+  const { user, isGlobalAdmin } = useAuth();
+  const showGlobalAdmin = isGlobalAdmin();
+  
+  // Se não for Admin Global, força a empresa do usuário
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(
+    showGlobalAdmin ? 'all' : (user?.companyId || 'all')
+  );
   const [filters, setFilters] = useState<DashboardFilters>(defaultFilters);
   const [selectedBridgeId, setSelectedBridgeId] = useState<string | null>(null);
   const operationalRef = useRef<HTMLDivElement>(null);
   const interventionsRef = useRef<HTMLDivElement>(null);
+
+  // Sincronizar selectedCompanyId quando user carrega (para não-admin)
+  useEffect(() => {
+    if (!showGlobalAdmin && user?.companyId && selectedCompanyId === 'all') {
+      setSelectedCompanyId(user.companyId);
+    }
+  }, [showGlobalAdmin, user?.companyId, selectedCompanyId]);
 
   const { bridges: allBridges, isLoading } = useBridges(selectedCompanyId);
 
@@ -158,15 +172,25 @@ export default function Dashboard() {
     });
   };
 
+  // Handler para mudar empresa (só Admin Global pode)
+  const handleSelectCompany = (id: string) => {
+    if (!showGlobalAdmin) return; // Bloquear para não-admin
+    setSelectedCompanyId(id);
+    setFilters({
+      ...filters,
+      companyId: id
+    });
+  };
+
   return (
     <div className="flex flex-1">
-      <CompanySidebar selectedCompanyId={selectedCompanyId} onSelectCompany={id => {
-        setSelectedCompanyId(id);
-        setFilters({
-          ...filters,
-          companyId: id
-        });
-      }} />
+      {/* Sidebar só aparece para Admin Global */}
+      {showGlobalAdmin && (
+        <CompanySidebar 
+          selectedCompanyId={selectedCompanyId} 
+          onSelectCompany={handleSelectCompany} 
+        />
+      )}
 
       <main className="flex-1 overflow-auto p-4">
         {/* Header compacto */}

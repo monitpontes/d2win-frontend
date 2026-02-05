@@ -29,9 +29,14 @@ import { toast } from 'sonner';
 import type { Bridge, Sensor, User, UserRole } from '@/types';
 
 export default function Admin() {
-  const { hasRole } = useAuth();
+  const { user, isGlobalAdmin } = useAuth();
+  const showGlobalAdmin = isGlobalAdmin();
+  
   const [selectedTab, setSelectedTab] = useState('bridges');
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
+  // Se não for Admin Global, força a empresa do usuário
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(
+    showGlobalAdmin ? '' : (user?.companyId || '')
+  );
   const [searchBridge, setSearchBridge] = useState('');
   const [searchUser, setSearchUser] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -47,8 +52,6 @@ export default function Admin() {
 
   // New user form state
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', password: '', role: 'viewer' as UserRole });
-
-  const isAdmin = hasRole('admin');
 
   // API hooks
   const { companies } = useCompanies();
@@ -68,12 +71,14 @@ export default function Admin() {
     return map;
   }, [telemetryData]);
 
-  // Set initial company when companies load
+  // Para Admin Empresa, forçar empresa do usuário quando carrega
   useMemo(() => {
-    if (companies.length > 0 && !selectedCompanyId) {
+    if (!showGlobalAdmin && user?.companyId && !selectedCompanyId) {
+      setSelectedCompanyId(user.companyId);
+    } else if (showGlobalAdmin && companies.length > 0 && !selectedCompanyId) {
       setSelectedCompanyId(companies[0].id);
     }
-  }, [companies, selectedCompanyId]);
+  }, [companies, selectedCompanyId, showGlobalAdmin, user?.companyId]);
 
   // Filter users
   const companyUsers = useMemo(() => {
@@ -133,9 +138,9 @@ export default function Admin() {
 
   const getRoleBadge = (role: string) => {
     const configs: Record<string, { label: string; className: string }> = {
-      admin: { label: 'Admin', className: 'bg-primary/10 text-primary' },
-      gestor: { label: 'Gestor', className: 'bg-muted' },
-      viewer: { label: 'Viewer', className: 'bg-muted' },
+      admin: { label: 'Admin Global', className: 'bg-primary/10 text-primary' },
+      gestor: { label: 'Admin Empresa', className: 'bg-muted' },
+      viewer: { label: 'Visualizador', className: 'bg-muted' },
     };
     const config = configs[role] || { label: role, className: 'bg-muted' };
     return <Badge variant="outline" className={config.className}>{config.label}</Badge>;
@@ -175,11 +180,13 @@ export default function Admin() {
 
   return (
     <div className="flex min-h-screen">
-      {/* Sidebar */}
-      <AdminSidebar 
-        selectedCompanyId={selectedCompanyId} 
-        onSelectCompany={setSelectedCompanyId} 
-      />
+      {/* Sidebar - só para Admin Global */}
+      {showGlobalAdmin && (
+        <AdminSidebar 
+          selectedCompanyId={selectedCompanyId} 
+          onSelectCompany={setSelectedCompanyId} 
+        />
+      )}
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -187,7 +194,12 @@ export default function Admin() {
         <div className="border-b bg-card px-6 py-4 shrink-0">
           <h1 className="text-2xl font-bold">Painel Administrativo</h1>
           <p className="text-muted-foreground">
-            Gerenciando: <span className="text-primary font-medium">{selectedCompany?.name || 'Selecione uma empresa'}</span>
+            Gerenciando: <span className="text-primary font-medium">
+              {showGlobalAdmin 
+                ? (selectedCompany?.name || 'Selecione uma empresa')
+                : selectedCompany?.name || 'Sua Empresa'
+              }
+            </span>
           </p>
         </div>
 
@@ -396,12 +408,10 @@ export default function Admin() {
                           <SelectItem value="viewer">Viewer</SelectItem>
                         </SelectContent>
                       </Select>
-                      {isAdmin && (
-                        <Button onClick={() => setIsNewUserOpen(true)}>
-                          <Plus className="h-4 w-4 mr-2" />
-                          Novo Usuário
-                        </Button>
-                      )}
+                      <Button onClick={() => setIsNewUserOpen(true)}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Novo Usuário
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>
@@ -467,7 +477,7 @@ export default function Admin() {
                                   <Pencil className="h-4 w-4 mr-1" />
                                   Editar
                                 </Button>
-                                {isAdmin && (
+                                {showGlobalAdmin && (
                                   <Button 
                                     variant="ghost" 
                                     size="icon" 
@@ -650,8 +660,8 @@ export default function Admin() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="viewer">Visualizador</SelectItem>
-                  <SelectItem value="gestor">Gestor</SelectItem>
-                  <SelectItem value="admin">Administrador</SelectItem>
+                  <SelectItem value="gestor">Admin Empresa</SelectItem>
+                  {showGlobalAdmin && <SelectItem value="admin">Admin Global</SelectItem>}
                 </SelectContent>
               </Select>
             </div>

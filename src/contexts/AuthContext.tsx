@@ -13,6 +13,9 @@ interface AuthContextType {
   isAuthenticated: boolean;
   hasRole: (roles: UserRole | UserRole[]) => boolean;
   canAccessAdmin: () => boolean;
+  isGlobalAdmin: () => boolean;
+  isCompanyAdmin: () => boolean;
+  isViewer: () => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -135,6 +138,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return hasRole(['admin', 'gestor']);
   }, [hasRole]);
 
+  const isGlobalAdmin = useCallback((): boolean => {
+    return hasRole('admin');
+  }, [hasRole]);
+
+  const isCompanyAdmin = useCallback((): boolean => {
+    return hasRole('gestor');
+  }, [hasRole]);
+
+  const isViewer = useCallback((): boolean => {
+    return hasRole('viewer');
+  }, [hasRole]);
+
   const value: AuthContextType = {
     user,
     isLoading,
@@ -143,6 +158,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: !!user,
     hasRole,
     canAccessAdmin,
+    isGlobalAdmin,
+    isCompanyAdmin,
+    isViewer,
   };
 
   return (
@@ -165,6 +183,9 @@ export function useAuth() {
       isAuthenticated: false,
       hasRole: () => false,
       canAccessAdmin: () => false,
+      isGlobalAdmin: () => false,
+      isCompanyAdmin: () => false,
+      isViewer: () => false,
     } as AuthContextType;
   }
   
