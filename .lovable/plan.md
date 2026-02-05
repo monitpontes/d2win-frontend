@@ -1,135 +1,151 @@
 
-# Plano: Corrigir Inputs de Limites e Usar Limites Dinâmicos na Legenda 3D
+# Plano: Exibir Valores Recentes Imediatamente ao Carregar as Páginas
 
-## Problemas Identificados
+## Problema Identificado
 
-### 1. Inputs não editáveis na Configuração de Limites
-O `parseFloat` no `onChange` pode retornar `NaN` quando o campo fica vazio ou inválido, causando problemas de edição.
+Atualmente, quando o usuário acessa o Dashboard ou a página de detalhes da ponte:
 
-### 2. Bridge3D recebe limites hardcoded
-Na linha 383-384 de `BridgeDetail.tsx`:
-```typescript
-// ANTES - valores fixos
-frequencyLimits={{ normalToAlert: 3.7, alertToCritical: 7 }}
-accelerationLimits={{ normalToAlert: 2.5, alertToCritical: 5.0 }}
-```
+1. A página carrega e mostra `-` nos valores
+2. A API `/telemetry/latest` é chamada (demora ~200-500ms)
+3. Depois que a API responde, os valores aparecem
 
-### 3. Legenda de níveis não usa limites da API
-As funções `getFreqLimits()` e `getAccelLimits()` no componente Bridge3D precisam usar os valores passados via props.
+O usuário vê um "flash" de valores vazios antes dos dados reais aparecerem.
+
+## Causa Raiz
+
+O hook `useTelemetry` faz queries HTTP assíncronas:
+- `latestQuery` busca `/telemetry/latest/bridge/{id}`
+- Durante o loading, `latestQuery.data` é `undefined`
+- Componentes exibem `-` enquanto aguardam
+
+## Solução Proposta
+
+### Estratégia: Loading State Visual + Skeleton
+
+Em vez de mostrar "-" durante o carregamento, exibir um estado de loading visual (skeleton) que indica que os dados estão sendo carregados. Isso é mais profissional e evita a impressão de "dados vazios".
+
+### Alternativa: Dados em Cache Persistente
+
+Usar `localStorage` para cachear os últimos valores e exibi-los imediatamente enquanto a API atualiza. Assim o usuário vê os últimos valores conhecidos instantaneamente.
 
 ## Arquivos a Modificar
 
-### 1. src/components/admin/BridgeDetailsDialog.tsx
+### 1. src/hooks/useTelemetry.ts
 
-**Problema:** Inputs podem ficar bloqueados com `NaN`
-
-| Linha | Antes | Depois |
-|-------|-------|--------|
-| 335 | `parseFloat(e.target.value)` | `parseFloat(e.target.value) \|\| 0` |
-| 344 | `parseFloat(e.target.value)` | `parseFloat(e.target.value) \|\| 0` |
-| 358 | `parseFloat(e.target.value)` | `parseFloat(e.target.value) \|\| 0` |
-| 367 | `parseFloat(e.target.value)` | `parseFloat(e.target.value) \|\| 0` |
-
-### 2. src/pages/BridgeDetail.tsx
-
-**Problema:** Bridge3D recebe limites hardcoded
-
-| Linha | Antes | Depois |
-|-------|-------|--------|
-| 383-384 | Props fixas | Usar `limits` da API |
+Adicionar lógica de cache persistente:
 
 ```typescript
-// DEPOIS - valores da API
-<Bridge3D
-  sensors={bridge3DSensors}
-  onSensorClick={(sensor) => setSelectedSensor3D(sensor)}
-  selectedSensor={selectedSensor3D}
-  frequencyLimits={{ 
-    normalToAlert: limits.freqAlert, 
-    alertToCritical: limits.freqCritical 
-  }}
-  accelerationLimits={{ 
-    normalToAlert: limits.accelAlert, 
-    alertToCritical: limits.accelCritical 
-  }}
-/>
+// Ao receber dados da API, salvar no localStorage
+useEffect(() => {
+  if (combinedData.length > 0 && bridgeId) {
+    localStorage.setItem(`telemetry-cache-${bridgeId}`, JSON.stringify(combinedData));
+  }
+}, [combinedData, bridgeId]);
+
+// Ao iniciar, carregar do cache se existir
+const cachedData = useMemo(() => {
+  if (!bridgeId) return [];
+  const cached = localStorage.getItem(`telemetry-cache-${bridgeId}`);
+  return cached ? JSON.parse(cached) : [];
+}, [bridgeId]);
+
+// Usar cache enquanto carrega
+const latestData = isLoading && cachedData.length > 0 ? cachedData : combinedData;
 ```
 
-### 3. src/components/bridge/Bridge3D.tsx
+Retornar também flag `isFromCache` para indicar dados antigos.
 
-**Problema:** Legenda usa funções `getFreqLimits()` e `getAccelLimits()` que não existem
+### 2. src/components/dashboard/BridgeCard.tsx
 
-Definir funções auxiliares no início do componente:
+Usar o estado de loading para mostrar skeleton:
+
+| Local | Antes | Depois |
+|-------|-------|--------|
+| displayValue | Mostra "-" se undefined | Mostra Skeleton se loading E sem cache |
+| Timestamp | Mostra "-" | Mostra "Carregando..." ou Skeleton |
 
 ```typescript
-// Adicionar funções que retornam os limites das props
-const getFreqLimits = () => freqLimits;  // Já usa props com fallback
-const getAccelLimits = () => accelLimits; // Já usa props com fallback
+const { latestData, isLoading, isFromCache } = useTelemetry(bridge.id);
+
+// Na tabela
+<TableCell className="text-xs font-medium py-1">
+  {isLoading && !latestData.length 
+    ? <Skeleton className="h-4 w-16" />
+    : reading.lastValue
+  }
+</TableCell>
 ```
 
-Na verdade, olhando o código, `freqLimits` e `accelLimits` já existem (linhas 42-43), então a legenda precisa usar diretamente:
+### 3. src/pages/BridgeDetail.tsx
 
-| Linha | Antes | Depois |
-|-------|-------|--------|
-| 305 | `getFreqLimits().normalToAlert` | `freqLimits.normalToAlert` |
-| 306 | `getFreqLimits().*` | `freqLimits.*` |
-| 307 | `getFreqLimits().*` | `freqLimits.*` |
-| 311 | `getAccelLimits().normalToAlert` | `accelLimits.normalToAlert` |
-| 312 | `getAccelLimits().*` | `accelLimits.*` |
-| 313 | `getAccelLimits().*` | `accelLimits.*` |
+Aplicar mesma lógica nos cards de sensores:
 
-## Fluxo de Dados Corrigido
+- Mostrar skeleton durante loading inicial
+- Exibir valores do cache se disponíveis
+- Atualizar para valores reais quando API responder
 
-```
+## Fluxo de Dados Atualizado
+
+```text
 ┌─────────────────────────────────────────────────────────────┐
-│        API /bridge-limits?bridge_id=xxx                     │
-│  { freq_alert: 3.7, freq_critical: 7.0, ... }              │
+│                    Primeira Visita                          │
 └─────────────────────────────────────────────────────────────┘
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│           useBridgeLimits(bridgeId)                         │
-│  Retorna: { limits, rawLimits, refetch }                    │
+│  1. Componente monta                                        │
+│  2. Verifica localStorage → vazio                           │
+│  3. Mostra Skeleton (loading visual)                        │
+│  4. API responde → mostra valores + salva cache             │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                    Visitas Subsequentes                     │
 └─────────────────────────────────────────────────────────────┘
                            │
-         ┌─────────────────┴─────────────────────┐
-         ▼                                       ▼
-┌────────────────────┐                  ┌─────────────────┐
-│  BridgeDetail.tsx  │                  │  BridgeDetails  │
-│                    │                  │  Dialog.tsx     │
-│  Pass limits to    │                  │                 │
-│  Bridge3D props    │                  │  Form inputs    │
-└────────────────────┘                  │  + Save button  │
-         │                              └─────────────────┘
-         ▼
-┌────────────────────────────────────────────────────────────┐
-│                    Bridge3D.tsx                            │
-│  frequencyLimits prop → freqLimits                         │
-│  accelerationLimits prop → accelLimits                     │
-│                                                            │
-│  ┌─────────────────┐  ┌─────────────────────────────────┐ │
-│  │ Cores sensores  │  │ Legenda de Níveis               │ │
-│  │ getSensorColor  │  │ Normal (< 3.7 Hz)              │ │
-│  │ usa freqLimits  │  │ Atenção (3.7-7 Hz)             │ │
-│  │                 │  │ Alerta (> 7 Hz)                │ │
-│  └─────────────────┘  └─────────────────────────────────┘ │
-└────────────────────────────────────────────────────────────┘
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  1. Componente monta                                        │
+│  2. Verifica localStorage → TEM CACHE                       │
+│  3. Mostra valores do cache IMEDIATAMENTE (isFromCache=true)│
+│  4. API responde → atualiza para valores frescos            │
+│  5. WebSocket conecta → atualiza em tempo real              │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+## Detalhes Técnicos
+
+### Cache Key Format
+```
+telemetry-cache-{bridgeId}
+```
+
+### Estrutura do Cache
+```json
+{
+  "data": [...telemetryData],
+  "timestamp": "2025-02-05T10:30:00Z"
+}
+```
+
+### Expiração do Cache
+- Cache nunca expira automaticamente (sempre mostra algo)
+- Valores são atualizados assim que API responder
+- Indicador visual sutil se dados são do cache (opcional)
 
 ## Resultado Esperado
 
-| Funcionalidade | Comportamento |
-|----------------|---------------|
-| Inputs editáveis | Campos numéricos aceitam edição normalmente |
-| Legenda Frequência | Exibe "Normal (< 3.7 Hz)", etc. com valores da API |
-| Legenda Aceleração | Exibe "Normal (< 10 m/s²)", etc. com valores da API |
-| Cores dos sensores 3D | Calculadas com limites da API |
-| Salvar limites | Persiste no banco e atualiza toda UI |
+| Cenário | Antes | Depois |
+|---------|-------|--------|
+| Primeira visita | Mostra "-" por 200-500ms | Mostra Skeleton por 200-500ms |
+| Visita subsequente | Mostra "-" por 200-500ms | Mostra valores do cache INSTANTANEAMENTE |
+| WebSocket conecta | Atualiza valores | Atualiza valores (sem mudança) |
+| Após atualização | Valores atualizados | Valores atualizados |
 
-## Arquivos Modificados
+## Arquivos a Modificar
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/components/admin/BridgeDetailsDialog.tsx` | Fix parseFloat para evitar NaN |
-| `src/pages/BridgeDetail.tsx` | Passar `limits` dinâmicos ao Bridge3D |
-| `src/components/bridge/Bridge3D.tsx` | Usar `freqLimits`/`accelLimits` na legenda |
+| `src/hooks/useTelemetry.ts` | Adicionar cache localStorage + flag isFromCache |
+| `src/components/dashboard/BridgeCard.tsx` | Usar Skeleton durante loading sem cache |
+| `src/pages/BridgeDetail.tsx` | Usar Skeleton durante loading sem cache |
