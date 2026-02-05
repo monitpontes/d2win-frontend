@@ -136,7 +136,7 @@ export default function Login() {
             </Button>
           </form>
 
-          {/* Demo Users */}
+          /* {/* Demo Users */}
           <div className="mt-6 border-t pt-6">
             <p className="mb-3 text-center text-sm text-muted-foreground">Usuários de demonstração:</p>
             <div className="space-y-1 text-center text-sm">
@@ -146,7 +146,7 @@ export default function Login() {
               <p><strong>demo@empresa.com</strong> - Demo</p>
               <p className="mt-2 text-muted-foreground">Senha: 0000</p>
             </div>
-          </div>
+          </div> */
 
           {/* Terms */}
           <p className="mt-4 text-center text-xs text-muted-foreground">
