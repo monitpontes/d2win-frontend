@@ -74,7 +74,6 @@ interface ApiHistoryResponse {
 }
 
 function mapApiDeviceToTelemetry(device: ApiDeviceTelemetry, bridgeId: string): TelemetryData {
-  const isFrequency = device.modo_operacao === 'frequencia';
   const peaks = device.freq?.peaks || [];
   
   return {
@@ -83,13 +82,13 @@ function mapApiDeviceToTelemetry(device: ApiDeviceTelemetry, bridgeId: string): 
     timestamp: device.last_seen,
     modoOperacao: device.modo_operacao,
     status: device.status,
-    // Extract frequency and magnitude from peaks
+    // SEMPRE extrair frequência (primeiro pico)
     frequency: peaks[0]?.f,
     magnitude1: peaks[0]?.mag,
     frequency2: peaks[1]?.f,
     magnitude2: peaks[1]?.mag,
-    // Extract acceleration Z value if available
-    acceleration: !isFrequency && device.accel?.value !== undefined
+    // SEMPRE extrair aceleração (independente do modo)
+    acceleration: device.accel?.value !== undefined
       ? { x: 0, y: 0, z: device.accel.value }
       : undefined,
   };
