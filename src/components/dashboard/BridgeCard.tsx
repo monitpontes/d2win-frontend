@@ -375,7 +375,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsLine data={chartData.frequency}>
                       <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                      <YAxis domain={[2, 8]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                      <YAxis domain={[0, 8]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                       <Tooltip />
                       <ReferenceLine 
                         y={chartData.thresholds.frequency.reference} 
@@ -407,7 +407,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsLine data={chartData.acceleration}>
                       <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                      <YAxis domain={[0, 25]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                      <YAxis domain={[5, 12]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                       <Tooltip />
                       <ReferenceLine 
                         y={chartData.thresholds.acceleration.normal} 
