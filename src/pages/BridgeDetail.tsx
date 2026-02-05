@@ -296,9 +296,9 @@ export default function BridgeDetail() {
             </Button>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold">OAE km {bridge.km}+{Math.floor(Math.random() * 999)} ({bridge.name} - {bridge.rodovia})</h1>
+                <h1 className="text-xl font-bold">{bridge.name}</h1>
               </div>
-              <p className="text-sm text-muted-foreground">ID: {bridge.id.replace('bridge-', 'A-P')}</p>
+              <p className="text-sm text-muted-foreground">ID: {bridge.id}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 rounded-lg border-2 border-destructive/50 bg-destructive/5 px-4 py-2">
