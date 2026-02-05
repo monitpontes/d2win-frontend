@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import L from 'leaflet';
+import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Badge } from '@/components/ui/badge';
 import { MapPin } from 'lucide-react';
