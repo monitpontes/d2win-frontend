@@ -1,76 +1,85 @@
 
 
-# Plano: Aumentar Largura e Restaurar Altura do Card de Ponte
+# Plano: Ajustar Tabela do BridgeCard
 
 ## Visualização
 
-### COMO ESTÁ AGORA (3 cards por linha em telas XL)
+### COMO ESTÁ AGORA
 ```text
-┌──────────────────────────────────────────────────────────────────────────────────────────┐
-│                                    DASHBOARD                                              │
-├─────────────────────────┬─────────────────────────┬─────────────────────────────────────┤
-│   Card Ponte 1          │   Card Ponte 2          │   Card Ponte 3                      │
-│   ┌─────────────────┐   │   ┌─────────────────┐   │   ┌─────────────────┐               │
-│   │ Tabela (33%)    │   │   │ Tabela (33%)    │   │   │ Tabela (33%)    │               │
-│   │ Colunas cortadas│   │   │ Colunas cortadas│   │   │ Colunas cortadas│               │
-│   │ max-h: 280px    │   │   │ max-h: 280px    │   │   │ max-h: 280px    │               │
-│   └─────────────────┘   │   └─────────────────┘   │   └─────────────────┘               │
-└─────────────────────────┴─────────────────────────┴─────────────────────────────────────┘
-                          ↑ pouco espaço horizontal para as 7 colunas
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ Sensor       │ Eixo │ Último Valor │  Ref.   │  Var.   │ St. │ Atualizado     │
+├──────────────┼──────┼──────────────┼─────────┼─────────┼─────┼────────────────┤
+│ Motiva_P1_S01│  Z   │  3.55 Hz     │ < 3.7 Hz│  -4.0%  │  ●  │ 05/02 14:32:01 │ (h-7)
+│ Motiva_P1_S02│  Z   │  9.92 m/s²   │ <12 m/s²│ -17.4%  │  ●  │ 05/02 14:32:01 │
+│ Motiva_P1_S03│  Z   │  3.55 Hz     │ < 3.7 Hz│  -4.0%  │  ●  │ 05/02 14:32:01 │
+└──────────────┴──────┴──────────────┴─────────┴─────────┴─────┴────────────────┘
+                         ↑ 7 colunas, linhas baixas
 ```
 
-### COMO VAI FICAR (2 cards por linha)
+### COMO VAI FICAR
 ```text
-┌───────────────────────────────────────────────────────────────────────────────────────────┐
-│                                     DASHBOARD                                              │
-├───────────────────────────────────────────┬───────────────────────────────────────────────┤
-│         Card Ponte 1 (50% largura)        │          Card Ponte 2 (50% largura)           │
-│   ┌─────────────────────────────────┐     │   ┌─────────────────────────────────┐         │
-│   │ Sensor │ Eixo │ Valor │ Ref │...│     │   │ Sensor │ Eixo │ Valor │ Ref │...│         │
-│   │ ACC-01 │  Z   │ 9.45  │ 9.0 │...│     │   │ ACC-01 │  Z   │ 8.20  │ 8.0 │...│         │
-│   │ FRQ-02 │  X   │ 3.21  │ 3.5 │...│     │   │ FRQ-02 │  X   │ 4.10  │ 4.0 │...│         │
-│   │ ACC-03 │  Y   │ 7.80  │ 8.0 │...│     │   │ ACC-03 │  Y   │ 6.90  │ 7.0 │...│         │
-│   │        TABELA COMPLETA         │     │   │        TABELA COMPLETA          │         │
-│   │        max-h: 320px            │     │   │        max-h: 320px             │         │
-│   └─────────────────────────────────┘     │   └─────────────────────────────────┘         │
-└───────────────────────────────────────────┴───────────────────────────────────────────────┘
-                     ↑ mais espaço horizontal = colunas visíveis
+┌─────────────────────────────────────────────────────────────────────┐
+│ Sensor       │ Eixo │   Valor    │   Ref.   │ St. │  Atualizado    │
+├──────────────┼──────┼────────────┼──────────┼─────┼────────────────┤
+│ Motiva_P1_S01│  Z   │  3.55 Hz   │ < 3.7 Hz │  ●  │ 05/02 14:32:01 │ (h-8)
+│              │      │            │          │     │                │
+│ Motiva_P1_S02│  Z   │  9.92 m/s² │ <12 m/s² │  ●  │ 05/02 14:32:01 │
+│              │      │            │          │     │                │
+│ Motiva_P1_S03│  Z   │  3.55 Hz   │ < 3.7 Hz │  ●  │ 05/02 14:32:01 │
+└──────────────┴──────┴────────────┴──────────┴─────┴────────────────┘
+     ↑ 6 colunas (sem Var.), linhas mais altas, espaçamento menor
 ```
 
-## Mudanças
+## Mudanças em `src/components/dashboard/BridgeCard.tsx`
 
-### 1. src/pages/Dashboard.tsx (linha 291)
+### 1. Aumentar altura das linhas
 
-Reduzir de 3 para 2 cards por linha em telas grandes:
+| Elemento | Antes | Depois |
+|----------|-------|--------|
+| Header row | `h-6` | `h-8` |
+| Body row | `h-7` | `h-8` |
+| Skeleton row | `h-7` | `h-8` |
 
+### 2. Reduzir espaçamento entre colunas
+
+Remover padding horizontal e usar padding mínimo:
+- Header: `px-2` (antes implícito maior)
+- Cells: `px-2` 
+
+### 3. Renomear coluna
+
+| Antes | Depois |
+|-------|--------|
+| `Último Valor` | `Valor` |
+
+### 4. Remover coluna Variação
+
+Remover do header:
 ```typescript
-// ANTES
-<div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
-
-// DEPOIS  
-<div className="grid gap-6 lg:grid-cols-2">
+// REMOVER
+<TableHead className="...">Var.</TableHead>
 ```
 
-### 2. src/components/dashboard/BridgeCard.tsx (linha 311)
-
-Aumentar altura da tabela de 280px para 320px:
-
+Remover do body:
 ```typescript
-// ANTES
-<div className="max-h-[280px] overflow-auto">
-
-// DEPOIS
-<div className="max-h-[320px] overflow-auto">
+// REMOVER
+<TableCell className={cn('...', getVariationColor(reading.variation))}>
+  {formatVariation(reading.variation)}
+</TableCell>
 ```
 
-## Resumo
+Remover do skeleton:
+```typescript
+// REMOVER
+<TableCell className="py-0.5"><Skeleton className="h-3 w-10" /></TableCell>
+```
+
+## Resumo das Mudanças
 
 | Propriedade | Antes | Depois |
 |-------------|-------|--------|
-| Cards por linha (XL) | 3 | 2 |
-| Cards por linha (LG) | 2 | 2 |
-| Largura do card | ~33% | ~50% |
-| Altura tabela | 280px | 320px |
-
-Isso dará mais espaço horizontal para as 7 colunas da tabela ficarem visíveis sem corte.
+| Altura linhas | h-6/h-7 | h-8 |
+| Colunas | 7 | 6 (sem Var.) |
+| Header "Último Valor" | "Último Valor" | "Valor" |
+| Padding colunas | implícito | px-2 compacto |
 
