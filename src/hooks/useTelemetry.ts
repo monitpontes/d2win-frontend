@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { telemetryService, type TelemetryData, type TelemetryTimeSeriesPoint } from '@/lib/api';
-import { useTelemetrySocket } from './useTelemetrySocket';
+import { useTelemetrySocket, type TimeSeriesHistoryPoint } from './useTelemetrySocket';
 
 export interface TelemetryHistoryData extends TelemetryData {
   // Extended fields for history
@@ -9,7 +9,7 @@ export interface TelemetryHistoryData extends TelemetryData {
 
 export function useTelemetry(bridgeId?: string) {
   // Socket para dados em tempo real
-  const { realtimeData, lastUpdate, isConnected } = useTelemetrySocket(bridgeId);
+  const { realtimeData, timeSeriesHistory, lastUpdate, isConnected } = useTelemetrySocket(bridgeId);
 
   // HTTP para dados iniciais (modo_operacao)
   const latestQuery = useQuery({
@@ -67,30 +67,26 @@ export function useTelemetry(bridgeId?: string) {
     return merged;
   }, [latestQuery.data, historyQuery.data, realtimeData]);
 
-  // Combinar timeSeries + dados novos do WebSocket
+  // Combinar timeSeries da API + dados acumulados do WebSocket (timeSeriesHistory)
   const timeSeriesData = useMemo(() => {
     const historical = timeSeriesQuery.data || [];
 
-    // Converter realtimeData para formato timeseries
-    const newPoints: TelemetryTimeSeriesPoint[] = realtimeData
-      .filter(rt => rt.timestamp)
-      .map(rt => ({
-        deviceId: rt.deviceId,
-        bridgeId: rt.bridgeId,
-        timestamp: rt.timestamp!,
-        type: rt.modoOperacao === 'frequencia' ? 'frequency' as const : 'acceleration' as const,
-        value: rt.modoOperacao === 'frequencia'
-          ? rt.frequency!
-          : rt.acceleration?.z!,
-        severity: rt.status,
-      }))
-      .filter(p => p.value !== undefined);
+    // Converter timeSeriesHistory do WebSocket para formato TelemetryTimeSeriesPoint
+    const wsPoints: TelemetryTimeSeriesPoint[] = timeSeriesHistory.map(p => ({
+      deviceId: p.deviceId,
+      bridgeId: bridgeId || '',
+      timestamp: p.timestamp,
+      type: p.type,
+      value: p.value,
+      peak2: p.peak2,
+      severity: p.severity,
+    }));
 
     // Evitar duplicatas por deviceId + timestamp
     const existingKeys = new Set(
       historical.map(p => `${p.deviceId}-${p.timestamp}`)
     );
-    const uniqueNew = newPoints.filter(
+    const uniqueNew = wsPoints.filter(
       p => !existingKeys.has(`${p.deviceId}-${p.timestamp}`)
     );
 
@@ -101,7 +97,7 @@ export function useTelemetry(bridgeId?: string) {
 
     // Manter últimos 200 pontos para evitar crescimento infinito
     return merged.slice(-200);
-  }, [timeSeriesQuery.data, realtimeData]);
+  }, [timeSeriesQuery.data, timeSeriesHistory, bridgeId]);
 
   return {
     latestData: combinedData,

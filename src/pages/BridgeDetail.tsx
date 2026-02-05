@@ -471,42 +471,93 @@ export default function BridgeDetail() {
                           </h5>
                           <div className="h-36">
                             <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={
-                                timeSeriesData
-                                  .filter(point => point.deviceId === currentSelectedSensor.id)
-                                  .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                                  .slice(-8)
-                                  .map(point => ({
-                                    time: format(new Date(point.timestamp), 'HH:mm:ss'),
-                                    value: point.value,
-                                  }))
-                              }>
-                                <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
-                                <XAxis dataKey="time" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={40} />
-                                <YAxis 
-                                  tick={{ fontSize: 9 }} 
-                                  domain={['auto', 'auto']} 
-                                  width={45}
-                                  tickFormatter={(v) => v.toFixed(1)}
-                                />
-                                <Tooltip 
-                                  contentStyle={{ fontSize: 11 }}
-                                  formatter={(value: number) => [
-                                    currentSelectedSensor.deviceType === 'frequencia' 
-                                      ? `${value.toFixed(2)} Hz` 
-                                      : `${value.toFixed(3)} m/s²`,
-                                    currentSelectedSensor.deviceType === 'frequencia' ? 'Frequência' : 'Aceleração'
-                                  ]}
-                                />
-                                <Line 
-                                  type="monotone" 
-                                  dataKey="value" 
-                                  stroke="hsl(var(--primary))" 
-                                  strokeWidth={2} 
-                                  dot={{ r: 3, fill: 'hsl(var(--primary))' }}
-                                  name="value"
-                                />
-                              </LineChart>
+                              {currentSelectedSensor.deviceType === 'frequencia' ? (
+                                // Gráfico de Frequência - 2 linhas (Pico 1 e Pico 2)
+                                <LineChart data={
+                                  timeSeriesData
+                                    .filter(point => point.deviceId === currentSelectedSensor.id && point.type === 'frequency')
+                                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                                    .slice(-8)
+                                    .map(point => ({
+                                      time: format(new Date(point.timestamp), 'HH:mm:ss'),
+                                      peak1: point.value,
+                                      peak2: point.peak2,
+                                    }))
+                                }>
+                                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                                  <XAxis dataKey="time" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={40} />
+                                  <YAxis 
+                                    tick={{ fontSize: 9 }} 
+                                    domain={['auto', 'auto']} 
+                                    width={45}
+                                    tickFormatter={(v) => v.toFixed(1)}
+                                  />
+                                  <Tooltip 
+                                    contentStyle={{ fontSize: 11 }}
+                                    formatter={(value: number, name: string) => [
+                                      `${value?.toFixed(2) ?? '-'} Hz`,
+                                      name === 'peak1' ? 'Pico 1' : 'Pico 2'
+                                    ]}
+                                  />
+                                  <Legend 
+                                    wrapperStyle={{ fontSize: 10 }}
+                                    formatter={(value) => value === 'peak1' ? 'Pico 1' : 'Pico 2'}
+                                  />
+                                  <Line 
+                                    type="monotone" 
+                                    dataKey="peak1" 
+                                    stroke="hsl(var(--primary))" 
+                                    strokeWidth={2} 
+                                    dot={{ r: 3, fill: 'hsl(var(--primary))' }}
+                                    name="peak1"
+                                  />
+                                  <Line 
+                                    type="monotone" 
+                                    dataKey="peak2" 
+                                    stroke="hsl(var(--chart-2))" 
+                                    strokeWidth={2} 
+                                    dot={{ r: 3, fill: 'hsl(var(--chart-2))' }}
+                                    name="peak2"
+                                    connectNulls={false}
+                                  />
+                                </LineChart>
+                              ) : (
+                                // Gráfico de Aceleração - 1 linha
+                                <LineChart data={
+                                  timeSeriesData
+                                    .filter(point => point.deviceId === currentSelectedSensor.id && point.type === 'acceleration')
+                                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                                    .slice(-8)
+                                    .map(point => ({
+                                      time: format(new Date(point.timestamp), 'HH:mm:ss'),
+                                      value: point.value,
+                                    }))
+                                }>
+                                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                                  <XAxis dataKey="time" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={40} />
+                                  <YAxis 
+                                    tick={{ fontSize: 9 }} 
+                                    domain={['auto', 'auto']} 
+                                    width={45}
+                                    tickFormatter={(v) => v.toFixed(3)}
+                                  />
+                                  <Tooltip 
+                                    contentStyle={{ fontSize: 11 }}
+                                    formatter={(value: number) => [
+                                      `${value.toFixed(4)} m/s²`,
+                                      'Aceleração'
+                                    ]}
+                                  />
+                                  <Line 
+                                    type="monotone" 
+                                    dataKey="value" 
+                                    stroke="hsl(var(--primary))" 
+                                    strokeWidth={2} 
+                                    dot={{ r: 3, fill: 'hsl(var(--primary))' }}
+                                    name="value"
+                                  />
+                                </LineChart>
+                              )}
                             </ResponsiveContainer>
                           </div>
                         </div>
