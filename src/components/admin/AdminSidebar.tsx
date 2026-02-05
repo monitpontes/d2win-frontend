@@ -3,6 +3,7 @@ import { Building2, Plus, Pencil, Trash2, MoreVertical, Loader2 } from 'lucide-r
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useCompanies } from '@/hooks/useCompanies';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -54,6 +55,8 @@ const emptyCompanyForm: CreateCompanyData = {
 };
 
 export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSidebarProps) {
+  const { isGlobalAdmin } = useAuth();
+  const showGlobalAdmin = isGlobalAdmin();
   const { companies, isLoading, createCompany, updateCompany, deleteCompany, isCreating, isUpdating, isDeleting } = useCompanies();
   
   const [isAddCompanyOpen, setIsAddCompanyOpen] = useState(false);
@@ -268,17 +271,19 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
             <Building2 className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium text-sm">Empresas</span>
           </div>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-6 w-6"
-            onClick={() => {
-              resetForm();
-              setIsAddCompanyOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+          {showGlobalAdmin && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-6 w-6"
+              onClick={() => {
+                resetForm();
+                setIsAddCompanyOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -319,35 +324,38 @@ export function AdminSidebar({ selectedCompanyId, onSelectCompany }: AdminSideba
                   </p>
                 </div>
                 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn(
-                        "h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0",
-                        selectedCompanyId === company.id
-                          ? "hover:bg-primary-foreground/20 text-primary-foreground"
-                          : "hover:bg-muted-foreground/20"
-                      )}
-                    >
-                      <MoreVertical className="h-3.5 w-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-32">
-                    <DropdownMenuItem onClick={(e) => openEditDialog(company, e as unknown as React.MouseEvent)}>
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Editar
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={(e) => openDeleteDialog(company, e as unknown as React.MouseEvent)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Excluir
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {/* Dropdown só para Admin Global */}
+                {showGlobalAdmin && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0",
+                          selectedCompanyId === company.id
+                            ? "hover:bg-primary-foreground/20 text-primary-foreground"
+                            : "hover:bg-muted-foreground/20"
+                        )}
+                      >
+                        <MoreVertical className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-32">
+                      <DropdownMenuItem onClick={(e) => openEditDialog(company, e as unknown as React.MouseEvent)}>
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Editar
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={(e) => openDeleteDialog(company, e as unknown as React.MouseEvent)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Excluir
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             </div>
           ))
