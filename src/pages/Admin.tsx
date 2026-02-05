@@ -71,6 +71,26 @@ export default function Admin() {
     return map;
   }, [telemetryData]);
 
+  // Contagem de dispositivos por ponte (calculado dinamicamente)
+  const deviceCountByBridge = useMemo(() => {
+    const map = new Map<string, number>();
+    companyDevices.forEach(device => {
+      const count = map.get(device.bridgeId) || 0;
+      map.set(device.bridgeId, count + 1);
+    });
+    return map;
+  }, [companyDevices]);
+
+  // Helper para label do tipo de dispositivo
+  const getDeviceTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      frequency: 'Frequência',
+      acceleration: 'Aceleração',
+      command_box: 'Caixa de Comando',
+    };
+    return labels[type] || type;
+  };
+
   // Para Admin Empresa, forçar empresa do usuário quando carrega
   useMemo(() => {
     if (!showGlobalAdmin && user?.companyId && !selectedCompanyId) {
@@ -300,7 +320,7 @@ export default function Admin() {
                             </div>
                             <div className="space-y-1 text-sm mb-4">
                               <p><span className="font-medium">Local:</span> {bridge.location || 'N/A'}</p>
-                              <p><span className="font-medium">Sensores:</span> {bridge.sensorCount}</p>
+                              <p><span className="font-medium">Sensores:</span> {deviceCountByBridge.get(bridge.id) || 0}</p>
                               <p><span className="font-medium">Atualizado:</span> {new Date(bridge.lastUpdate).toLocaleDateString('pt-BR')}</p>
                             </div>
                             <Button 
@@ -537,7 +557,7 @@ export default function Admin() {
                             <TableRow key={device.id}>
                               <TableCell className="font-medium text-primary">{device.name}</TableCell>
                               <TableCell className="text-primary">{bridge?.name || (typeof device.bridgeId === 'string' ? device.bridgeId.slice(-8) : 'N/A')}</TableCell>
-                              <TableCell>{device.type === 'frequency' ? 'Frequência' : 'Aceleração'}</TableCell>
+                              <TableCell>{getDeviceTypeLabel(device.type)}</TableCell>
                               <TableCell>{getStatusBadge(telemetryStatusMap.get(device.deviceId) || device.status)}</TableCell>
                               <TableCell>{new Date(device.lastReading.timestamp).toLocaleString('pt-BR')}</TableCell>
                               <TableCell className="text-right">
