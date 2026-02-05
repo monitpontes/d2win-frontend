@@ -40,6 +40,9 @@ export function useTelemetry(bridgeId?: string) {
     bridgeId ? getCachedData(bridgeId) : []
   );
 
+  // Estado para polling agressivo inicial (5 segundos)
+  const [initialPolling, setInitialPolling] = useState(true);
+
   // HTTP para dados iniciais (modo_operacao)
   const latestQuery = useQuery({
     queryKey: ['telemetry', 'latest', bridgeId],
@@ -48,7 +51,7 @@ export function useTelemetry(bridgeId?: string) {
     staleTime: 60000,
   });
 
-  // HTTP para histórico inicial
+  // HTTP para histórico inicial (contém TODOS os sensores com último valor)
   const historyQuery = useQuery({
     queryKey: ['telemetry', 'history', bridgeId],
     queryFn: () => telemetryService.getHistoryByBridge(bridgeId!, { limit: 500 }),
@@ -64,24 +67,45 @@ export function useTelemetry(bridgeId?: string) {
     staleTime: 5 * 60 * 1000, // 5 minutos - WebSocket atualiza em tempo real
   });
 
+  // Polling agressivo nos primeiros 5 segundos para capturar dados rapidamente
+  useEffect(() => {
+    if (!bridgeId || !initialPolling) return;
+    
+    // Polling a cada 1s por 5 segundos
+    const interval = setInterval(() => {
+      latestQuery.refetch();
+      historyQuery.refetch();
+    }, 1000);
+    
+    // Para após 5 segundos
+    const timeout = setTimeout(() => {
+      setInitialPolling(false);
+    }, 5000);
+    
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [bridgeId, initialPolling, latestQuery, historyQuery]);
+
   // Combinar: HTTP inicial + WebSocket realtime
-  // Prioriza latestQuery (mais rápido) para mostrar valores imediatamente
+  // IMPORTANTE: historyData como base (tem TODOS sensores com último valor conhecido)
   const combinedData = useMemo(() => {
     const latestModes = latestQuery.data || [];
     const historyData = historyQuery.data || [];
 
-    // Criar mapa de histórico para enriquecer depois
-    const historyByDevice = new Map<string, TelemetryData>();
-    historyData.forEach((h) => historyByDevice.set(h.deviceId, h));
+    // Criar mapa de latest para sobrescrever histórico quando há dados mais recentes
+    const latestByDevice = new Map<string, TelemetryData>();
+    latestModes.forEach((l) => latestByDevice.set(l.deviceId, l));
 
-    // Base: latestQuery (rápido) → mostra valores imediatamente
-    let merged: TelemetryData[] = latestModes.length > 0 
-      ? latestModes.map((latest) => ({
-          // Enriquecer com dados do histórico se disponível
-          ...(historyByDevice.get(latest.deviceId) || {}),
-          ...latest, // latest sobrescreve para garantir valor mais recente
+    // BASE: historyData (tem todos sensores, mesmo offline)
+    // ENRIQUECE: com latestQuery (dados mais recentes se disponíveis)
+    let merged: TelemetryData[] = historyData.length > 0 
+      ? historyData.map((history) => ({
+          ...history,  // Base: último valor do histórico (sempre presente)
+          ...(latestByDevice.get(history.deviceId) || {}),  // Sobrescreve se tiver latest mais recente
         }))
-      : historyData; // Fallback para histórico se latest vazio
+      : latestModes;  // Fallback se histórico vazio
 
     // WebSocket: atualizar dados em tempo real
     realtimeData.forEach((rt) => {
