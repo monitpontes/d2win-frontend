@@ -68,7 +68,7 @@ export default function DataAnalysisSection({ bridgeId }: DataAnalysisSectionPro
   
   const { addIntervention } = useInterventions();
   const { bridge } = useBridge(bridgeId);
-  const { historyData, latestData, timeSeriesData, isLoading: isTelemetryLoading, isConnected, lastUpdate } = useTelemetry(bridgeId);
+  const { latestData, timeSeriesData, isLoading: isTelemetryLoading, isConnected, lastUpdate } = useTelemetry(bridgeId);
   const { rawLimits } = useBridgeLimits(bridgeId);
   const thresholds = useMemo(() => limitsToThresholds(rawLimits), [rawLimits]);
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');

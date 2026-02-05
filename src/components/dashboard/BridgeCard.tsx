@@ -63,7 +63,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
   const { devices } = useDevices(undefined, bridge.id);
   
   // Fetch real telemetry data with cache support
-  const { latestData, timeSeriesData, isLoading: isTelemetryLoading, isFromCache } = useTelemetry(bridge.id);
+  const { latestData, timeSeriesData, isLoading: isTelemetryLoading } = useTelemetry(bridge.id);
   
   // Fetch bridge limits and convert to thresholds
   const { rawLimits } = useBridgeLimits(bridge.id);
