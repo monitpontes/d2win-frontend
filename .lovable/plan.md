@@ -1,192 +1,61 @@
 
-# Plano: Otimizar Chamadas HTTP - 1 Query Inicial + WebSocket
+# Plano: Adaptar Tabela do BridgeCard à Largura da Tela
 
 ## Objetivo
 
-Reduzir drasticamente as queries ao banco de dados:
-- Dashboard: 1x `/latest` + 1x `/timeseries`
-- BridgePage: 1x `/latest` + 1x `/timeseries`
-- WebSocket assume imediatamente após carga inicial
+Fazer a tabela se adaptar melhor à largura disponível, mostrando as colunas de forma mais completa e com melhor uso do espaço.
 
-## Mudanças
+## Mudanças em `src/components/dashboard/BridgeCard.tsx`
 
-### 1. src/hooks/useTelemetry.ts (reescrever)
+### 1. Reduzir Espaçamentos
 
-**Remover:**
-- Cache localStorage (desnecessário com WebSocket)
-- Polling de 5 segundos
-- `historyQuery` (não usado)
-- Estados `initialPolling` e `cachedData`
+| Elemento | Atual | Novo |
+|----------|-------|------|
+| Header height | `h-8` | `h-6` |
+| Body row height | `h-9` | `h-7` |
+| Cell padding | `py-1` | `py-0.5` |
+| Font size células | `text-xs` | `text-[11px]` |
 
-**Manter:**
-- `latestQuery` - 1 chamada no mount
-- `timeSeriesQuery` - 1 chamada no mount (para gráficos)
-- WebSocket merge para atualizações em tempo real
+### 2. Tabela com Largura Total
 
-**Código otimizado:**
+Remover overflow wrapper duplicado e usar `w-full` com `table-fixed` para distribuir colunas:
 
 ```typescript
-import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
-import { telemetryService, type TelemetryData, type TelemetryTimeSeriesPoint } from '@/lib/api';
-import { useTelemetrySocket } from './useTelemetrySocket';
-
-export interface TelemetryHistoryData extends TelemetryData {
-  // Extended fields for history
-}
-
-export interface UseTelemetryOptions {
-  includeTimeSeries?: boolean;
-}
-
-export function useTelemetry(bridgeId?: string, options?: UseTelemetryOptions) {
-  const { includeTimeSeries = true } = options || {};
-  
-  // Socket para dados em tempo real
-  const { realtimeData, timeSeriesHistory, lastUpdate, isConnected } = useTelemetrySocket(bridgeId);
-
-  // HTTP ÚNICA para dados iniciais - só executa 1 vez no mount
-  const latestQuery = useQuery({
-    queryKey: ['telemetry', 'latest', bridgeId],
-    queryFn: () => telemetryService.getLatestByBridge(bridgeId!),
-    enabled: !!bridgeId,
-    staleTime: Infinity,  // Nunca refetch automático - WebSocket assume
-    refetchOnWindowFocus: false,
-    refetchOnMount: 'always',  // Sempre busca ao montar (1 vez)
-    refetchOnReconnect: false,
-  });
-
-  // HTTP para série temporal (gráficos) - SÓ se includeTimeSeries=true
-  const timeSeriesQuery = useQuery({
-    queryKey: ['telemetry', 'timeseries', bridgeId],
-    queryFn: () => telemetryService.getHistoryTimeSeries(bridgeId!, { limit: 100 }),
-    enabled: !!bridgeId && includeTimeSeries,
-    staleTime: Infinity,  // Nunca refetch automático - WebSocket faz append
-    refetchOnWindowFocus: false,
-    refetchOnMount: 'always',
-    refetchOnReconnect: false,
-  });
-
-  // Combinar: HTTP inicial + WebSocket realtime
-  const latestData = useMemo(() => {
-    const httpData = latestQuery.data || [];
-    
-    // Clonar para não mutar array original
-    const merged = [...httpData];
-    
-    // WebSocket atualiza em tempo real (substitui valores existentes)
-    realtimeData.forEach((rt) => {
-      const idx = merged.findIndex((m) => m.deviceId === rt.deviceId);
-      if (idx >= 0) {
-        merged[idx] = { ...merged[idx], ...rt };
-      } else {
-        merged.push(rt);
-      }
-    });
-
-    return merged;
-  }, [latestQuery.data, realtimeData]);
-
-  // TimeSeries: HTTP inicial + WebSocket append
-  const timeSeriesData = useMemo(() => {
-    if (!includeTimeSeries) return [];
-    
-    const historical = timeSeriesQuery.data || [];
-    
-    // Converter timeSeriesHistory do WebSocket para formato TelemetryTimeSeriesPoint
-    const wsPoints: TelemetryTimeSeriesPoint[] = timeSeriesHistory.map(p => ({
-      deviceId: p.deviceId,
-      bridgeId: bridgeId || '',
-      timestamp: p.timestamp,
-      type: p.type,
-      value: p.value,
-      peak2: p.peak2,
-      severity: p.severity,
-    }));
-
-    // Evitar duplicatas por deviceId + timestamp
-    const existingKeys = new Set(
-      historical.map(p => `${p.deviceId}-${p.timestamp}`)
-    );
-    const uniqueNew = wsPoints.filter(
-      p => !existingKeys.has(`${p.deviceId}-${p.timestamp}`)
-    );
-
-    // Merge, ordenar e manter últimos 200 pontos
-    return [...historical, ...uniqueNew]
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-      .slice(-200);
-  }, [timeSeriesQuery.data, timeSeriesHistory, bridgeId, includeTimeSeries]);
-
-  return {
-    latestData,
-    timeSeriesData,
-    realtimeData,
-    isLoading: latestQuery.isLoading,
-    isLoadingTimeSeries: timeSeriesQuery.isLoading,
-    isConnected,
-    lastUpdate,
-    refetchLatest: latestQuery.refetch,
-    refetchTimeSeries: timeSeriesQuery.refetch,
-  };
-}
-
-export function useTelemetryByCompany(companyId?: string) {
-  return useQuery({
-    queryKey: ['telemetry', 'company', companyId],
-    queryFn: () => telemetryService.getLatestByCompany(companyId!),
-    enabled: !!companyId,
-    staleTime: Infinity,  // WebSocket assume
-    refetchOnWindowFocus: false,
-    refetchOnMount: 'always',
-    refetchOnReconnect: false,
-  });
-}
+<div className="border rounded-md overflow-hidden">
+  <div className="max-h-[280px] overflow-auto">
+    <Table className="w-full">
+      <TableHeader>
+        <TableRow className="bg-muted/50">
+          <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 whitespace-nowrap">Sensor</TableHead>
+          <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 w-10">Eixo</TableHead>
+          <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 whitespace-nowrap">Último Valor</TableHead>
+          <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 whitespace-nowrap">Ref.</TableHead>
+          <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 w-14">Var.</TableHead>
+          <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 w-8">St.</TableHead>
+          <TableHead className="text-[11px] h-6 py-0.5 sticky top-0 bg-muted/95 whitespace-nowrap">Atualizado</TableHead>
+        </TableRow>
+      </TableHeader>
 ```
 
-### 2. Componentes que usam useTelemetry (verificar compatibilidade)
+### 3. Ajustar Células do Body
 
-Os componentes que usam `historyData`, `isFromCache`, `isLoadingHistory`, `isLoadingLatest`, `refetchHistory` precisam ser atualizados:
+- Reduzir padding para `py-0.5` e `px-1`
+- Usar `text-[11px]` para fonte menor
+- Adicionar `whitespace-nowrap` onde necessário
 
-| Propriedade Removida | Substituição |
-|---------------------|--------------|
-| `historyData` | Remover uso (não utilizado) |
-| `isFromCache` | Remover (cache eliminado) |
-| `isLoadingHistory` | Usar `isLoading` |
-| `isLoadingLatest` | Usar `isLoading` |
-| `refetchHistory` | Remover |
+### 4. Abreviar Headers
 
-## Fluxo Final
+| Atual | Novo |
+|-------|------|
+| Referência | Ref. |
+| Variação | Var. |
+| Status | St. |
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  Página carrega (Dashboard ou BridgePage)                   │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  1x GET /telemetry/latest → valores para cards              │
-│  1x GET /telemetry/timeseries → dados para gráficos         │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  WebSocket conecta → join_bridge                            │
-│  Eventos "telemetry" atualizam em tempo real                │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Nenhuma query HTTP adicional                               │
-│  Apenas WebSocket mantém dados atualizados                  │
-└─────────────────────────────────────────────────────────────┘
-```
+## Seção Técnica
 
-## Economia
+Modificações no arquivo `src/components/dashboard/BridgeCard.tsx`:
+- Linhas 314-322: atualizar headers com classes compactas
+- Linhas 328-336: skeleton rows mais compactos
+- Linhas 340-354: body rows mais compactos
 
-| Métrica | Antes | Depois |
-|---------|-------|--------|
-| Queries iniciais | 3 | 2 |
-| Polling (5s) | ~10 queries | 0 |
-| Total por carga | ~13 queries | 2 queries |
-| Redução | - | **~85%** |
+O componente `Table` do shadcn já tem `w-full`, mas adicionaremos larguras fixas nas colunas menores (Eixo, Var., St.) para melhor distribuição.
