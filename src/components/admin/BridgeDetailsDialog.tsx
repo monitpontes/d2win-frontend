@@ -332,7 +332,10 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
                         type="number" 
                         step="0.1"
                         value={limits.freqNormalToAlert}
-                        onChange={(e) => setLimits(prev => ({ ...prev, freqNormalToAlert: parseFloat(e.target.value) }))}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setLimits(prev => ({ ...prev, freqNormalToAlert: isNaN(val) ? 0 : val }));
+                        }}
                       />
                     </div>
                     <div>
@@ -341,7 +344,10 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
                         type="number" 
                         step="0.1"
                         value={limits.freqAlertToCritical}
-                        onChange={(e) => setLimits(prev => ({ ...prev, freqAlertToCritical: parseFloat(e.target.value) }))}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setLimits(prev => ({ ...prev, freqAlertToCritical: isNaN(val) ? 0 : val }));
+                        }}
                       />
                     </div>
                   </div>
@@ -355,7 +361,10 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
                         type="number" 
                         step="0.1"
                         value={limits.accelNormalToAlert}
-                        onChange={(e) => setLimits(prev => ({ ...prev, accelNormalToAlert: parseFloat(e.target.value) }))}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setLimits(prev => ({ ...prev, accelNormalToAlert: isNaN(val) ? 0 : val }));
+                        }}
                       />
                     </div>
                     <div>
@@ -364,7 +373,10 @@ export function BridgeDetailsDialog({ bridge, open, onOpenChange }: BridgeDetail
                         type="number" 
                         step="0.1"
                         value={limits.accelAlertToCritical}
-                        onChange={(e) => setLimits(prev => ({ ...prev, accelAlertToCritical: parseFloat(e.target.value) }))}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setLimits(prev => ({ ...prev, accelAlertToCritical: isNaN(val) ? 0 : val }));
+                        }}
                       />
                     </div>
                   </div>

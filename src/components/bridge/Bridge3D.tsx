@@ -269,8 +269,9 @@ export default function Bridge3D({
     oc.update()
   }
 
-  const getFreqLimits = () => frequencyLimits ?? { normalToAlert: 3.7, alertToCritical: 7 }
-  const getAccelLimits = () => accelerationLimits ?? { normalToAlert: 2.5, alertToCritical: 5.0 }
+  // Limites com fallback para valores padrão
+  const freqLimits = frequencyLimits ?? { normalToAlert: 3.7, alertToCritical: 7 }
+  const accelLimits = accelerationLimits ?? { normalToAlert: 2.5, alertToCritical: 5.0 }
 
   return (
     <div className="relative w-full h-full min-h-[400px] bg-gradient-to-b from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 rounded-lg overflow-hidden">
@@ -302,15 +303,15 @@ export default function Bridge3D({
           <p className="font-semibold mb-2">Níveis:</p>
           {selectedSensor.deviceType === "frequencia" ? (
             <>
-              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-green-500" /> Normal (&lt; {getFreqLimits().normalToAlert} Hz)</p>
-              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-500" /> Atenção ({getFreqLimits().normalToAlert}-{getFreqLimits().alertToCritical} Hz)</p>
-              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" /> Alerta (&gt; {getFreqLimits().alertToCritical} Hz)</p>
+              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-green-500" /> Normal (&lt; {freqLimits.normalToAlert} Hz)</p>
+              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-500" /> Atenção ({freqLimits.normalToAlert}-{freqLimits.alertToCritical} Hz)</p>
+              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" /> Alerta (&gt; {freqLimits.alertToCritical} Hz)</p>
             </>
           ) : selectedSensor.deviceType === "aceleracao" ? (
             <>
-              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-green-500" /> Normal (&lt; {getAccelLimits().normalToAlert} m/s²)</p>
-              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-500" /> Atenção ({getAccelLimits().normalToAlert}-{getAccelLimits().alertToCritical} m/s²)</p>
-              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" /> Alerta (&gt; {getAccelLimits().alertToCritical} m/s²)</p>
+              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-green-500" /> Normal (&lt; {accelLimits.normalToAlert} m/s²)</p>
+              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-500" /> Atenção ({accelLimits.normalToAlert}-{accelLimits.alertToCritical} m/s²)</p>
+              <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" /> Alerta (&gt; {accelLimits.alertToCritical} m/s²)</p>
             </>
           ) : (
             <p className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-gray-500" /> Caixa de comando</p>
