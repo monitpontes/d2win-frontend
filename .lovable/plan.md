@@ -1,85 +1,112 @@
 
+# Plano: Mostrar Card com Estado de Carregamento
 
-# Plano: Ajustar Tabela do BridgeCard
+## Problema Atual
+
+Os dispositivos (nomes dos sensores) carregam antes da telemetria, causando uma exibição com valores "-" temporariamente antes dos dados reais aparecerem.
+
+## Solução
+
+Mostrar um skeleton/loading state no card inteiro enquanto a telemetria ainda está carregando. Só exibir a tabela com dados quando AMBOS estiverem prontos.
 
 ## Visualização
 
 ### COMO ESTÁ AGORA
 ```text
-┌────────────────────────────────────────────────────────────────────────────────┐
-│ Sensor       │ Eixo │ Último Valor │  Ref.   │  Var.   │ St. │ Atualizado     │
-├──────────────┼──────┼──────────────┼─────────┼─────────┼─────┼────────────────┤
-│ Motiva_P1_S01│  Z   │  3.55 Hz     │ < 3.7 Hz│  -4.0%  │  ●  │ 05/02 14:32:01 │ (h-7)
-│ Motiva_P1_S02│  Z   │  9.92 m/s²   │ <12 m/s²│ -17.4%  │  ●  │ 05/02 14:32:01 │
-│ Motiva_P1_S03│  Z   │  3.55 Hz     │ < 3.7 Hz│  -4.0%  │  ●  │ 05/02 14:32:01 │
-└──────────────┴──────┴──────────────┴─────────┴─────────┴─────┴────────────────┘
-                         ↑ 7 colunas, linhas baixas
+┌─────────────────────────────────────────┐
+│ OAE km 54+313                    Ponte  │
+│ ○ Localização                           │
+├─────────────────────────────────────────┤
+│ Sensor       │ Eixo │ Valor │ ...       │
+├──────────────┼──────┼───────┼───────────┤
+│ Motiva_P1_S01│  Z   │   -   │  ...      │  ← Problema: "-" aparece
+│ Motiva_P1_S02│  Z   │   -   │  ...      │
+│ Motiva_P1_S03│  Z   │   -   │  ...      │
+└─────────────────────────────────────────┘
 ```
 
-### COMO VAI FICAR
+### COMO VAI FICAR (durante carregamento)
 ```text
-┌─────────────────────────────────────────────────────────────────────┐
-│ Sensor       │ Eixo │   Valor    │   Ref.   │ St. │  Atualizado    │
-├──────────────┼──────┼────────────┼──────────┼─────┼────────────────┤
-│ Motiva_P1_S01│  Z   │  3.55 Hz   │ < 3.7 Hz │  ●  │ 05/02 14:32:01 │ (h-8)
-│              │      │            │          │     │                │
-│ Motiva_P1_S02│  Z   │  9.92 m/s² │ <12 m/s² │  ●  │ 05/02 14:32:01 │
-│              │      │            │          │     │                │
-│ Motiva_P1_S03│  Z   │  3.55 Hz   │ < 3.7 Hz │  ●  │ 05/02 14:32:01 │
-└──────────────┴──────┴────────────┴──────────┴─────┴────────────────┘
-     ↑ 6 colunas (sem Var.), linhas mais altas, espaçamento menor
+┌─────────────────────────────────────────┐
+│ OAE km 54+313                    Ponte  │
+│ ○ Localização                           │
+├─────────────────────────────────────────┤
+│                                         │
+│   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   │
+│   Carregando dados dos sensores...      │
+│   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+### COMO VAI FICAR (após carregar)
+```text
+┌─────────────────────────────────────────┐
+│ OAE km 54+313                    Ponte  │
+│ ○ Localização                           │
+├─────────────────────────────────────────┤
+│ Sensor       │ Eixo │ Valor │ ...       │
+├──────────────┼──────┼───────┼───────────┤
+│ Motiva_P1_S01│  Z   │3.58 Hz│  ...      │  ← Valores reais
+│ Motiva_P1_S02│  Z   │10.1m/s│  ...      │
+│ Motiva_P1_S03│  Z   │3.55 Hz│  ...      │
+└─────────────────────────────────────────┘
 ```
 
 ## Mudanças em `src/components/dashboard/BridgeCard.tsx`
 
-### 1. Aumentar altura das linhas
+### 1. Adicionar `isLoading` do hook de devices
 
-| Elemento | Antes | Depois |
-|----------|-------|--------|
-| Header row | `h-6` | `h-8` |
-| Body row | `h-7` | `h-8` |
-| Skeleton row | `h-7` | `h-8` |
-
-### 2. Reduzir espaçamento entre colunas
-
-Remover padding horizontal e usar padding mínimo:
-- Header: `px-2` (antes implícito maior)
-- Cells: `px-2` 
-
-### 3. Renomear coluna
-
-| Antes | Depois |
-|-------|--------|
-| `Último Valor` | `Valor` |
-
-### 4. Remover coluna Variação
-
-Remover do header:
 ```typescript
-// REMOVER
-<TableHead className="...">Var.</TableHead>
+// Linha ~63
+const { devices, isLoading: isDevicesLoading } = useDevices(undefined, bridge.id);
 ```
 
-Remover do body:
+### 2. Criar flag combinada de loading
+
 ```typescript
-// REMOVER
-<TableCell className={cn('...', getVariationColor(reading.variation))}>
-  {formatVariation(reading.variation)}
-</TableCell>
+// Nova variável após os hooks (~linha 70)
+const isDataLoading = isDevicesLoading || isTelemetryLoading;
 ```
 
-Remover do skeleton:
+### 3. Substituir conteúdo da seção de dados por skeleton durante loading
+
+No `CardContent` (~linha 279), antes da área de Tabs/Tabela, adicionar verificação:
+
 ```typescript
-// REMOVER
-<TableCell className="py-0.5"><Skeleton className="h-3 w-10" /></TableCell>
+<CardContent className="flex-1 pb-3">
+  {isDataLoading ? (
+    <div className="flex flex-col items-center justify-center py-8 space-y-3">
+      <div className="flex space-x-2">
+        <Skeleton className="h-4 w-4 rounded-full" />
+        <Skeleton className="h-4 w-4 rounded-full" />
+        <Skeleton className="h-4 w-4 rounded-full" />
+      </div>
+      <p className="text-sm text-muted-foreground">Carregando dados dos sensores...</p>
+      <div className="w-full space-y-2">
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
+      </div>
+    </div>
+  ) : (
+    <>
+      {/* Conteúdo existente: Tabs, Tabela, Gráficos */}
+    </>
+  )}
+  
+  {/* Footer Stats - sempre visível */}
+  <div className="flex items-center justify-between mt-3 pt-3 border-t ...">
 ```
 
-## Resumo das Mudanças
+### 4. Manter footer sempre visível
 
-| Propriedade | Antes | Depois |
-|-------------|-------|--------|
-| Altura linhas | h-6/h-7 | h-8 |
-| Colunas | 7 | 6 (sem Var.) |
-| Header "Último Valor" | "Último Valor" | "Valor" |
-| Padding colunas | implícito | px-2 compacto |
+O rodapé com "sensores ativos" e "Atualizado" permanece visível mesmo durante o loading, mas o contador mostrará 0 durante o carregamento.
 
+## Resumo
+
+| Aspecto | Antes | Depois |
+|---------|-------|--------|
+| Durante loading | Mostra tabela com "-" | Mostra skeleton centralizado |
+| Texto feedback | Nenhum | "Carregando dados dos sensores..." |
+| UX | Confuso (valores vazios) | Claro (estado de loading) |
