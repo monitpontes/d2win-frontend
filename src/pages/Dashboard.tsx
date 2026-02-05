@@ -288,7 +288,7 @@ export default function Dashboard() {
 
             {/* Bridge Cards Grid */}
             {bridges.length > 0 ? (
-              <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-6 lg:grid-cols-2">
                 {bridges.map(bridge => <BridgeCard key={bridge.id} bridge={bridge} />)}
               </div>
             ) : (
