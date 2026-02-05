@@ -27,7 +27,8 @@ import { cn } from '@/lib/utils';
 import { LineChart as RechartsLine, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine } from 'recharts';
 import { useTelemetry } from '@/hooks/useTelemetry';
 import { useDevices } from '@/hooks/useDevices';
-import { DEFAULT_THRESHOLDS } from '@/lib/constants/sensorThresholds';
+import { useBridgeLimits } from '@/hooks/useBridgeLimits';
+import { limitsToThresholds } from '@/lib/api/bridgeLimits';
 import { 
   getSensorStatus, 
   calculateVariation, 
@@ -62,6 +63,10 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
   
   // Fetch real telemetry data
   const { latestData, timeSeriesData } = useTelemetry(bridge.id);
+  
+  // Fetch bridge limits and convert to thresholds
+  const { rawLimits } = useBridgeLimits(bridge.id);
+  const thresholds = useMemo(() => limitsToThresholds(rawLimits), [rawLimits]);
 
   // Combine devices with telemetry - devices come first to show all sensors immediately
   const sensorReadings = useMemo(() => {
@@ -92,8 +97,8 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
         }
       }
       
-      const status = getSensorStatus(value, type);
-      const variation = calculateVariation(value, type);
+      const status = getSensorStatus(value, type, thresholds);
+      const variation = calculateVariation(value, type, thresholds);
       const activityStatus = calculateActivityStatus(telemetry?.timestamp);
 
       // Format display value
@@ -105,7 +110,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
         sensorName: formatSensorName(deviceName, deviceId),
         axis: 'Z' as const,
         lastValue: displayValue,
-        reference: getReferenceText(type),
+        reference: getReferenceText(type, thresholds),
         variation,
         status,
         activityStatus,
@@ -132,7 +137,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
     }
 
     return [];
-  }, [devices, latestData]);
+  }, [devices, latestData, thresholds]);
 
   // Count active sensors (data within last 10 minutes)
   const activeSensorsCount = useMemo(() => 
@@ -146,6 +151,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
       return {
         frequency: [],
         acceleration: [],
+        thresholds,
       };
     }
 
@@ -166,11 +172,12 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
         value: d.value,
       }));
 
-    return {
-      frequency: frequencyData,
-      acceleration: accelerationData,
-    };
-  }, [timeSeriesData]);
+      return {
+        frequency: frequencyData,
+        acceleration: accelerationData,
+        thresholds, // Pass thresholds for chart reference lines
+      };
+  }, [timeSeriesData, thresholds]);
 
   const filteredReadings = useMemo(() => {
     if (axisFilter === 'all') return sensorReadings;
@@ -355,13 +362,13 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                       <YAxis domain={[2, 8]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                       <Tooltip />
                       <ReferenceLine 
-                        y={DEFAULT_THRESHOLDS.frequency.reference} 
+                        y={chartData.thresholds.frequency.reference} 
                         stroke="hsl(var(--muted-foreground))" 
                         strokeDasharray="4 2" 
-                        label={{ value: `Ref ${DEFAULT_THRESHOLDS.frequency.reference}`, fontSize: 8, fill: 'hsl(var(--muted-foreground))' }}
+                        label={{ value: `Ref ${chartData.thresholds.frequency.reference}`, fontSize: 8, fill: 'hsl(var(--muted-foreground))' }}
                       />
                       <ReferenceLine 
-                        y={DEFAULT_THRESHOLDS.frequency.attention} 
+                        y={chartData.thresholds.frequency.attention} 
                         stroke="hsl(var(--warning))" 
                         strokeDasharray="4 2"
                       />
@@ -387,13 +394,13 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                       <YAxis domain={[0, 25]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                       <Tooltip />
                       <ReferenceLine 
-                        y={DEFAULT_THRESHOLDS.acceleration.normal} 
+                        y={chartData.thresholds.acceleration.normal} 
                         stroke="hsl(var(--warning))" 
                         strokeDasharray="4 2" 
-                        label={{ value: `Atenção ${DEFAULT_THRESHOLDS.acceleration.normal}`, fontSize: 8, fill: 'hsl(var(--warning))' }}
+                        label={{ value: `Atenção ${chartData.thresholds.acceleration.normal}`, fontSize: 8, fill: 'hsl(var(--warning))' }}
                       />
                       <ReferenceLine 
-                        y={DEFAULT_THRESHOLDS.acceleration.alert} 
+                        y={chartData.thresholds.acceleration.alert} 
                         stroke="hsl(var(--destructive))" 
                         strokeDasharray="4 2"
                       />

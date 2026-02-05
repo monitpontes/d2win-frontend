@@ -4,6 +4,7 @@ import { useBridge } from '@/hooks/useBridges';
 import { useDevices } from '@/hooks/useDevices';
 import { useTelemetry } from '@/hooks/useTelemetry';
 import { useBridgeLimits } from '@/hooks/useBridgeLimits';
+import { limitsToThresholds } from '@/lib/api/bridgeLimits';
 import { useAuth } from '@/contexts/AuthContext';
 import { structuralStatusLabels, type StructuralStatus } from '@/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -55,7 +56,10 @@ export default function BridgeDetail() {
   const { bridge, isLoading: isLoadingBridge } = useBridge(id);
   const { devices: sensors, isLoading: isLoadingSensors } = useDevices(undefined, id);
   const { latestData: telemetryData, timeSeriesData, isLoading: isLoadingTelemetry } = useTelemetry(id);
-  const { limits } = useBridgeLimits(id);
+  const { rawLimits, limits } = useBridgeLimits(id);
+  
+  // Converter limites da API para formato de thresholds
+  const thresholds = useMemo(() => limitsToThresholds(rawLimits), [rawLimits]);
   
   // Placeholder data for features not yet connected to API
   const events: BridgeEvent[] = [];
@@ -95,7 +99,7 @@ export default function BridgeDetail() {
                             telemetry?.modoOperacao === 'frequencia';
         const value = isFrequency ? telemetry?.frequency : telemetry?.acceleration?.z;
         const sensorType = isFrequency ? 'frequency' : 'acceleration';
-        const statusResult = getSensorStatus(value, sensorType);
+        const statusResult = getSensorStatus(value, sensorType, thresholds);
         
         return {
           id: sensor.deviceId || sensor.name,
@@ -133,7 +137,7 @@ export default function BridgeDetail() {
       const isFrequency = telemetry.modoOperacao === 'frequencia';
       const value = isFrequency ? telemetry.frequency : telemetry.acceleration?.z;
       const sensorType = isFrequency ? 'frequency' : 'acceleration';
-      const statusResult = getSensorStatus(value, sensorType);
+      const statusResult = getSensorStatus(value, sensorType, thresholds);
 
       return {
         id: telemetry.deviceId || `S${idx + 1}`,
@@ -150,7 +154,7 @@ export default function BridgeDetail() {
         timestamp: telemetry.timestamp,
       };
     });
-  }, [sensors, telemetryData]);
+  }, [sensors, telemetryData, thresholds]);
 
   // Sync selected sensor with real-time data from bridge3DSensors
   const currentSelectedSensor = useMemo(() => {

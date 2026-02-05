@@ -1,4 +1,5 @@
 import { api } from './client';
+import { type SensorThresholds, DEFAULT_THRESHOLDS } from '@/lib/constants/sensorThresholds';
 
 // API response structure
 export interface ApiBridgeLimits {
@@ -87,3 +88,26 @@ export const bridgeLimitsService = {
     }
   },
 };
+
+/**
+ * Converte BridgeLimits da API para formato SensorThresholds
+ * usado pelas funções de cálculo de status
+ */
+export function limitsToThresholds(limits: BridgeLimits | null | undefined): SensorThresholds {
+  if (!limits) return DEFAULT_THRESHOLDS;
+  
+  return {
+    frequency: {
+      normal: limits.freqAlert,           // < freqAlert = Normal
+      attention: limits.freqCritical,     // freqAlert - freqCritical = Atenção
+      alert: limits.freqCritical,         // > freqCritical = Alerta
+      reference: limits.freqAlert,        // Linha de referência
+    },
+    acceleration: {
+      normal: limits.accelAlert,          // < accelAlert = Normal
+      attention: limits.accelCritical,    // accelAlert - accelCritical = Atenção
+      alert: limits.accelCritical,        // > accelCritical = Alerta
+      reference: limits.accelAlert,       // Linha de referência
+    },
+  };
+}
