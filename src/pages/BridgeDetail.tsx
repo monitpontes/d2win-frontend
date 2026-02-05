@@ -380,8 +380,8 @@ export default function BridgeDetail() {
                       sensors={bridge3DSensors}
                       onSensorClick={(sensor) => setSelectedSensor3D(sensor)}
                       selectedSensor={selectedSensor3D}
-                      frequencyLimits={{ normalToAlert: 3.7, alertToCritical: 7 }}
-                      accelerationLimits={{ normalToAlert: 2.5, alertToCritical: 5.0 }}
+                      frequencyLimits={{ normalToAlert: limits.freqAlert, alertToCritical: limits.freqCritical }}
+                      accelerationLimits={{ normalToAlert: limits.accelAlert, alertToCritical: limits.accelCritical }}
                     />
                   </div>
                   <div className="space-y-4">
