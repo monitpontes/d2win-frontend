@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import { MapPin, Clock, ArrowRight, AlertTriangle, TableIcon, LineChart } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -61,8 +62,8 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
   // Fetch devices from database first (instant HTTP)
   const { devices } = useDevices(undefined, bridge.id);
   
-  // Fetch real telemetry data
-  const { latestData, timeSeriesData } = useTelemetry(bridge.id);
+  // Fetch real telemetry data with cache support
+  const { latestData, timeSeriesData, isLoading: isTelemetryLoading, isFromCache } = useTelemetry(bridge.id);
   
   // Fetch bridge limits and convert to thresholds
   const { rawLimits } = useBridgeLimits(bridge.id);
@@ -321,23 +322,38 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredReadings.map((reading, idx) => (
-                    <TableRow key={idx} className="h-9">
-                      <TableCell className="text-xs font-medium py-1">{reading.sensorName}</TableCell>
-                      <TableCell className="text-xs py-1">
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-primary border-primary">
-                          {reading.axis}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs font-medium py-1">{reading.lastValue}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground py-1">{reading.reference}</TableCell>
-                      <TableCell className={cn('text-xs font-medium py-1', getVariationColor(reading.variation))}>
-                        {formatVariation(reading.variation)}
-                      </TableCell>
-                      <TableCell className="py-1">{renderStatusIndicator(reading.status)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground py-1">{reading.updatedAt}</TableCell>
-                    </TableRow>
-                  ))}
+                  {isTelemetryLoading && filteredReadings.length === 0 ? (
+                    // Show skeleton rows while loading without cache
+                    Array.from({ length: 3 }).map((_, idx) => (
+                      <TableRow key={`skeleton-${idx}`} className="h-9">
+                        <TableCell className="py-1"><Skeleton className="h-4 w-20" /></TableCell>
+                        <TableCell className="py-1"><Skeleton className="h-4 w-8" /></TableCell>
+                        <TableCell className="py-1"><Skeleton className="h-4 w-16" /></TableCell>
+                        <TableCell className="py-1"><Skeleton className="h-4 w-14" /></TableCell>
+                        <TableCell className="py-1"><Skeleton className="h-4 w-12" /></TableCell>
+                        <TableCell className="py-1"><Skeleton className="h-3 w-3 rounded-full" /></TableCell>
+                        <TableCell className="py-1"><Skeleton className="h-4 w-20" /></TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    filteredReadings.map((reading, idx) => (
+                      <TableRow key={idx} className="h-9">
+                        <TableCell className="text-xs font-medium py-1">{reading.sensorName}</TableCell>
+                        <TableCell className="text-xs py-1">
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-primary border-primary">
+                            {reading.axis}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs font-medium py-1">{reading.lastValue}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground py-1">{reading.reference}</TableCell>
+                        <TableCell className={cn('text-xs font-medium py-1', getVariationColor(reading.variation))}>
+                          {formatVariation(reading.variation)}
+                        </TableCell>
+                        <TableCell className="py-1">{renderStatusIndicator(reading.status)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground py-1">{reading.updatedAt}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>

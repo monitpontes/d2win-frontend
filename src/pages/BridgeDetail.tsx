@@ -55,7 +55,7 @@ export default function BridgeDetail() {
   // Use API to fetch bridge data
   const { bridge, isLoading: isLoadingBridge } = useBridge(id);
   const { devices: sensors, isLoading: isLoadingSensors } = useDevices(undefined, id);
-  const { latestData: telemetryData, timeSeriesData, isLoading: isLoadingTelemetry } = useTelemetry(id);
+  const { latestData: telemetryData, timeSeriesData, isLoading: isLoadingTelemetry, isFromCache } = useTelemetry(id);
   const { rawLimits, limits } = useBridgeLimits(id);
   
   // Converter limites da API para formato de thresholds
