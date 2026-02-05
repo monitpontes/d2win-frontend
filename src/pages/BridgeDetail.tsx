@@ -488,9 +488,10 @@ export default function BridgeDetail() {
                                   <XAxis dataKey="time" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={40} />
                                   <YAxis 
                                     tick={{ fontSize: 9 }} 
-                                    domain={['auto', 'auto']} 
-                                    width={45}
-                                    tickFormatter={(v) => v.toFixed(1)}
+                                    domain={[0, 8]}
+                                    width={50}
+                                    tickFormatter={(v) => `${v.toFixed(1)}`}
+                                    label={{ value: 'Hz', angle: -90, position: 'insideLeft', fontSize: 9 }}
                                   />
                                   <Tooltip 
                                     contentStyle={{ fontSize: 11 }}
@@ -501,7 +502,23 @@ export default function BridgeDetail() {
                                   />
                                   <Legend 
                                     wrapperStyle={{ fontSize: 10 }}
-                                    formatter={(value) => value === 'peak1' ? 'Pico 1' : 'Pico 2'}
+                                    formatter={(value) => {
+                                      if (value === 'peak1') return 'Pico 1';
+                                      if (value === 'peak2') return 'Pico 2';
+                                      return value;
+                                    }}
+                                  />
+                                  <ReferenceLine 
+                                    y={3.7} 
+                                    stroke="hsl(var(--warning))" 
+                                    strokeDasharray="4 2"
+                                    label={{ value: 'Atenção 3.7', position: 'right', fontSize: 8, fill: 'hsl(var(--warning))' }}
+                                  />
+                                  <ReferenceLine 
+                                    y={7.0} 
+                                    stroke="hsl(var(--destructive))" 
+                                    strokeDasharray="4 2"
+                                    label={{ value: 'Alerta 7.0', position: 'right', fontSize: 8, fill: 'hsl(var(--destructive))' }}
                                   />
                                   <Line 
                                     type="monotone" 
@@ -537,9 +554,10 @@ export default function BridgeDetail() {
                                   <XAxis dataKey="time" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={40} />
                                   <YAxis 
                                     tick={{ fontSize: 9 }} 
-                                    domain={['auto', 'auto']} 
-                                    width={45}
-                                    tickFormatter={(v) => v.toFixed(3)}
+                                    domain={[5, 12]}
+                                    width={55}
+                                    tickFormatter={(v) => `${v.toFixed(1)}`}
+                                    label={{ value: 'm/s²', angle: -90, position: 'insideLeft', fontSize: 9 }}
                                   />
                                   <Tooltip 
                                     contentStyle={{ fontSize: 11 }}
@@ -547,6 +565,16 @@ export default function BridgeDetail() {
                                       `${value.toFixed(4)} m/s²`,
                                       'Aceleração'
                                     ]}
+                                  />
+                                  <Legend 
+                                    wrapperStyle={{ fontSize: 10 }}
+                                    formatter={(value) => value === 'value' ? 'Aceleração' : value}
+                                  />
+                                  <ReferenceLine 
+                                    y={10} 
+                                    stroke="hsl(var(--warning))" 
+                                    strokeDasharray="4 2"
+                                    label={{ value: 'Atenção 10', position: 'right', fontSize: 8, fill: 'hsl(var(--warning))' }}
                                   />
                                   <Line 
                                     type="monotone" 
