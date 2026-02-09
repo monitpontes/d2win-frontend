@@ -1,121 +1,110 @@
 
-# Plano: Corrigir Contagem de Sensores e Tipo do Dispositivo
+# Plano: 4 Melhorias (Gráficos, Favicon, Scroll-to-Top, Sensor Click)
 
-## Problemas Identificados
+## 1. Gráficos com todos os sensores e legenda
 
-### 1. Sensores: 0
-O campo `bridge.sensorCount` vem da API como `0` porque o backend não está populando esse valor. A contagem precisa ser calculada dinamicamente no frontend contando quantos dispositivos estão associados a cada ponte.
+### Problema
+Os gráficos no BridgeCard mostram apenas uma linha genérica ("Freq Z" / "Acel Z") sem diferenciar por sensor.
 
-### 2. Tipo do sensor sempre "Aceleração"
-Na linha 540 do `Admin.tsx`, a lógica atual é:
-```typescript
-<TableCell>{device.type === 'frequency' ? 'Frequência' : 'Aceleração'}</TableCell>
-```
-Isso não trata o tipo `command_box` e mostra "Aceleração" como fallback para qualquer tipo que não seja "frequency".
+### Solucao
+Reestruturar os dados do gráfico para agrupar por `deviceId`, criando uma `Line` para cada sensor com cor distinta e legenda.
 
-## Solução
+**Arquivo: `src/components/dashboard/BridgeCard.tsx`**
 
-### Arquivo 1: `src/pages/Admin.tsx`
-
-**Mudança A: Calcular `sensorCount` dinamicamente**
-
-Criar um mapa de contagem de dispositivos por ponte usando os dados de `companyDevices`:
+- No `chartData` (useMemo ~linha 152), agrupar `timeSeriesData` por `deviceId` em vez de juntar tudo numa única série
+- Cada sensor terá sua própria chave no objeto de dados (ex: `Motiva_P1_S01`, `Motiva_P1_S03`)
+- Gerar dinamicamente uma `<Line>` para cada sensor com cores distintas
+- Adicionar `<Legend>` do Recharts para exibir os nomes dos sensores
 
 ```typescript
-// Após linha ~60 (hooks)
-const deviceCountByBridge = useMemo(() => {
-  const map = new Map<string, number>();
-  companyDevices.forEach(device => {
-    const count = map.get(device.bridgeId) || 0;
-    map.set(device.bridgeId, count + 1);
-  });
-  return map;
-}, [companyDevices]);
+// Estrutura do chartData por sensor:
+// [{ time: "09:54:03", Motiva_P1_S01: 3.48, Motiva_P1_S03: 3.50, ... }]
+
+// Renderizar:
+<Legend wrapperStyle={{ fontSize: 9 }} />
+{sensorIds.map((sensorId, idx) => (
+  <Line key={sensorId} dataKey={sensorId} stroke={COLORS[idx]} ... />
+))}
 ```
 
-Na linha ~303 onde exibe `bridge.sensorCount`, usar o mapa:
+Paleta de cores para as linhas (até 8 sensores):
+```text
+#4F8EF7, #34D399, #F59E0B, #EF4444, #8B5CF6, #EC4899, #06B6D4, #F97316
+```
+
+---
+
+## 2. Favicon com o logo d2win-logo.ico
+
+### Solucao
+Copiar o arquivo `user-uploads://d2win-logo.ico` para `public/d2win-logo.ico` e atualizar `index.html` para apontar para ele.
+
+**Arquivo: `index.html`**
+- Linha 6: `<link rel="icon" type="image/x-icon" href="/d2win-logo.ico" />`
+- Linha 7: `<link rel="shortcut icon" href="/d2win-logo.ico" />`
+
+---
+
+## 3. Botao Scroll-to-Top em todas as telas
+
+### Solucao
+Criar componente `ScrollToTop` que aparece quando o usuario rola a pagina para baixo, e ao clicar volta ao topo suavemente.
+
+**Novo arquivo: `src/components/ui/scroll-to-top.tsx`**
+- Monitora scroll do container pai (ou window)
+- Mostra botao flutuante (canto inferior direito) quando `scrollY > 300`
+- Usa icone `ChevronUp` do Lucide
+- Animacao de fade-in/out
+
+**Arquivo: `src/components/layout/MainLayout.tsx`**
+- Adicionar `<ScrollToTop />` no layout principal para que apareca em todas as paginas
+
+---
+
+## 4. Clique na linha do sensor abre BridgeDetail com sensor selecionado
+
+### Solucao
+Ao clicar numa linha da tabela de sensores no BridgeCard, navegar para `/bridge/{id}?sensor={deviceId}`. Na BridgeDetail, ler o query param e selecionar o sensor automaticamente.
+
+**Arquivo: `src/components/dashboard/BridgeCard.tsx`**
+- Importar `useNavigate` do react-router-dom
+- Adicionar `onClick` em cada `<TableRow>` da tabela de sensores:
+  ```typescript
+  <TableRow 
+    key={idx} 
+    className="h-8 cursor-pointer hover:bg-muted/50"
+    onClick={() => navigate(`/bridge/${bridge.id}?sensor=${encodeURIComponent(reading.sensorName)}`)}
+  >
+  ```
+- O botao "Ver detalhes" continua navegando sem query param (comportamento atual)
+
+**Arquivo: `src/pages/BridgeDetail.tsx`**
+- Importar `useSearchParams` do react-router-dom
+- Ao montar, ler `searchParams.get('sensor')`
+- Se existir, encontrar o sensor em `bridge3DSensors` pelo nome e chamar `setSelectedSensor3D(sensor)`
+- Usar `useEffect` que depende de `bridge3DSensors` e do query param
+
 ```typescript
-<p>
-  <span className="font-medium">Sensores:</span> {deviceCountByBridge.get(bridge.id) || 0}
-</p>
+const [searchParams] = useSearchParams();
+
+useEffect(() => {
+  const sensorParam = searchParams.get('sensor');
+  if (sensorParam && bridge3DSensors.length > 0 && !selectedSensor3D) {
+    const found = bridge3DSensors.find(s => s.name === sensorParam || s.id === sensorParam);
+    if (found) setSelectedSensor3D(found);
+  }
+}, [bridge3DSensors, searchParams]);
 ```
 
-**Mudança B: Corrigir exibição do tipo do dispositivo**
+---
 
-Na linha 540, trocar a lógica ternária por uma função que mapeia todos os tipos:
+## Resumo dos Arquivos a Modificar
 
-```typescript
-// Função helper (adicionar junto aos outros helpers)
-const getDeviceTypeLabel = (type: string) => {
-  const labels: Record<string, string> = {
-    frequency: 'Frequência',
-    acceleration: 'Aceleração',
-    command_box: 'Caixa de Comando',
-  };
-  return labels[type] || type;
-};
-
-// Na tabela de dispositivos (linha 540)
-<TableCell>{getDeviceTypeLabel(device.type)}</TableCell>
-```
-
-## Visualização
-
-### ANTES (Card da Ponte)
-```text
-┌─────────────────────────────────┐
-│ OAE km 54+313         [Normal]  │
-│ 65734c4c                        │
-│                                 │
-│ Local: N/A                      │
-│ Sensores: 0           ← Errado  │
-│ Atualizado: 05/02/2026          │
-└─────────────────────────────────┘
-```
-
-### DEPOIS (Card da Ponte)
-```text
-┌─────────────────────────────────┐
-│ OAE km 54+313         [Normal]  │
-│ 65734c4c                        │
-│                                 │
-│ Local: N/A                      │
-│ Sensores: 5           ← Correto │
-│ Atualizado: 05/02/2026          │
-└─────────────────────────────────┘
-```
-
-### ANTES (Tabela de Dispositivos)
-```text
-│ Motiva_P1_S01 │ OAE km... │ Aceleração     │ ← Sempre Aceleração
-│ Motiva_P1_S02 │ OAE km... │ Aceleração     │
-│ Motiva_P1_S03 │ OAE km... │ Aceleração     │
-```
-
-### DEPOIS (Tabela de Dispositivos)
-```text
-│ Motiva_P1_S01 │ OAE km... │ Frequência       │ ← Tipo real
-│ Motiva_P1_S02 │ OAE km... │ Aceleração       │
-│ Motiva_P1_S03 │ OAE km... │ Caixa de Comando │
-```
-
-## Resumo das Mudanças
-
-| Local | Mudança |
-|-------|---------|
-| Admin.tsx (~L62) | Adicionar `useMemo` para `deviceCountByBridge` |
-| Admin.tsx (~L303) | Usar `deviceCountByBridge.get(bridge.id)` em vez de `bridge.sensorCount` |
-| Admin.tsx (~L122) | Adicionar função `getDeviceTypeLabel` |
-| Admin.tsx (L540) | Usar `getDeviceTypeLabel(device.type)` |
-
-## Seção Técnica
-
-A contagem de sensores é feita no frontend porque:
-1. O backend não popula o campo `sensorCount` corretamente
-2. Temos os dispositivos já carregados via `useDevices`
-3. O mapeamento é feito pelo `bridgeId` de cada device
-
-Os tipos de sensor definidos em `src/types/index.ts` são:
-- `acceleration` → "Aceleração"
-- `frequency` → "Frequência"  
-- `command_box` → "Caixa de Comando"
+| Arquivo | Mudanca |
+|---------|---------|
+| `public/d2win-logo.ico` | Copiar favicon do upload |
+| `index.html` | Atualizar href do favicon |
+| `src/components/dashboard/BridgeCard.tsx` | Graficos multi-sensor + click na linha |
+| `src/components/ui/scroll-to-top.tsx` | Novo componente scroll-to-top |
+| `src/components/layout/MainLayout.tsx` | Adicionar ScrollToTop |
+| `src/pages/BridgeDetail.tsx` | Ler query param `sensor` e selecionar |
