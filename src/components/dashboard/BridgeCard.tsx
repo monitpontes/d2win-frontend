@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import type { Bridge, StructuralStatus } from '@/types';
 import { structuralStatusLabels } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
@@ -25,7 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { MapPin, Clock, ArrowRight, AlertTriangle, TableIcon, LineChart } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { LineChart as RechartsLine, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine } from 'recharts';
+import { LineChart as RechartsLine, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, Legend } from 'recharts';
 import { useTelemetry } from '@/hooks/useTelemetry';
 import { useDevices } from '@/hooks/useDevices';
 import { useBridgeLimits } from '@/hooks/useBridgeLimits';
@@ -48,6 +48,7 @@ type AxisFilter = 'all' | 'X' | 'Y' | 'Z';
 type ViewMode = 'table' | 'chart';
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
+const SENSOR_COLORS = ['#4F8EF7', '#34D399', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
 
 // Calculate if sensor is active based on 10-minute threshold
 const calculateActivityStatus = (timestamp: string | undefined): 'online' | 'offline' => {
@@ -56,6 +57,7 @@ const calculateActivityStatus = (timestamp: string | undefined): 'online' | 'off
 };
 
 export function BridgeCard({ bridge }: BridgeCardProps) {
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [axisFilter, setAxisFilter] = useState<AxisFilter>('all');
 
@@ -148,40 +150,41 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
     sensorReadings.filter(r => r.activityStatus === 'online').length
   , [sensorReadings]);
 
-  // Generate chart data from timeSeriesData (real data with WebSocket updates)
+  // Generate chart data grouped by sensor
   const chartData = useMemo(() => {
     if (!timeSeriesData || timeSeriesData.length === 0) {
-      // Retorna arrays vazios se não há dados (sem mock)
-      return {
-        frequency: [],
-        acceleration: [],
-        thresholds,
-      };
+      return { frequency: { data: [], sensorIds: [] }, acceleration: { data: [], sensorIds: [] }, thresholds };
     }
 
-    // Use real time series data - take last 10 readings per type
-    const frequencyData = timeSeriesData
-      .filter(d => d.type === 'frequency')
-      .slice(-10)
-      .map(d => ({
-        time: formatDateValue(d.timestamp, 'HH:mm:ss'),
-        value: d.value,
-      }));
+    const buildSensorChart = (type: 'frequency' | 'acceleration') => {
+      const filtered = timeSeriesData.filter(d => d.type === type);
+      // Get unique sensor IDs
+      const sensorIds = [...new Set(filtered.map(d => d.deviceId))];
+      // Group by timestamp, merge sensor values into single row
+      const timeMap = new Map<string, Record<string, number | string>>();
+      filtered.forEach(d => {
+        const time = formatDateValue(d.timestamp, 'HH:mm:ss');
+        if (!timeMap.has(time)) timeMap.set(time, { time });
+        const row = timeMap.get(time)!;
+        // Use device name from devices list if available
+        const device = devices.find(dev => dev.deviceId === d.deviceId);
+        const label = device?.name || d.deviceId?.slice(-4) || 'Sensor';
+        row[label] = d.value;
+      });
+      // Resolve sensor IDs to labels
+      const sensorLabels = sensorIds.map(id => {
+        const device = devices.find(dev => dev.deviceId === id);
+        return device?.name || id?.slice(-4) || 'Sensor';
+      });
+      return { data: Array.from(timeMap.values()).slice(-10), sensorIds: sensorLabels };
+    };
 
-    const accelerationData = timeSeriesData
-      .filter(d => d.type === 'acceleration')
-      .slice(-10)
-      .map(d => ({
-        time: formatDateValue(d.timestamp, 'HH:mm:ss'),
-        value: d.value,
-      }));
-
-      return {
-        frequency: frequencyData,
-        acceleration: accelerationData,
-        thresholds, // Pass thresholds for chart reference lines
-      };
-  }, [timeSeriesData, thresholds]);
+    return {
+      frequency: buildSensorChart('frequency'),
+      acceleration: buildSensorChart('acceleration'),
+      thresholds,
+    };
+  }, [timeSeriesData, thresholds, devices]);
 
   const filteredReadings = useMemo(() => {
     if (axisFilter === 'all') return sensorReadings;
@@ -342,7 +345,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                     </TableHeader>
                     <TableBody>
                       {filteredReadings.map((reading, idx) => (
-                        <TableRow key={idx} className="h-8">
+                        <TableRow key={idx} className="h-8 cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/bridge/${bridge.id}?sensor=${encodeURIComponent(reading.sensorName)}`)}>
                           <TableCell className="text-[11px] font-medium py-1 px-2 whitespace-nowrap">{reading.sensorName}</TableCell>
                           <TableCell className="text-[11px] py-1 px-2">
                             <Badge variant="outline" className="text-[9px] px-1 py-0 text-primary border-primary">
@@ -366,18 +369,19 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                 
                 {/* Frequency Chart */}
                 <div className="border rounded-md p-2">
-                  <div className="text-xs font-medium mb-2">Frequência (Hz) - Eixo Z</div>
-                  <div className="h-[100px]">
-                    {chartData.frequency.length === 0 ? (
+                  <div className="text-xs font-medium mb-2">Frequência (Hz)</div>
+                  <div className="h-[120px]">
+                    {chartData.frequency.data.length === 0 ? (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
                         Sem dados de frequência disponíveis
                       </div>
                     ) : (
                       <ResponsiveContainer width="100%" height="100%">
-                        <RechartsLine data={chartData.frequency}>
+                        <RechartsLine data={chartData.frequency.data}>
                           <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                           <YAxis domain={[0, 8]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                           <Tooltip />
+                          <Legend wrapperStyle={{ fontSize: 9 }} />
                           <ReferenceLine 
                             y={chartData.thresholds.frequency.reference} 
                             stroke="hsl(var(--muted-foreground))" 
@@ -389,7 +393,9 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                             stroke="hsl(var(--warning))" 
                             strokeDasharray="4 2"
                           />
-                          <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={{ r: 2 }} name="Freq Z" />
+                          {chartData.frequency.sensorIds.map((sensorId, idx) => (
+                            <Line key={sensorId} type="monotone" dataKey={sensorId} stroke={SENSOR_COLORS[idx % SENSOR_COLORS.length]} strokeWidth={1.5} dot={{ r: 2 }} />
+                          ))}
                         </RechartsLine>
                       </ResponsiveContainer>
                     )}
@@ -398,18 +404,19 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
 
                 {/* Acceleration Chart */}
                 <div className="border rounded-md p-2">
-                  <div className="text-xs font-medium mb-2">Aceleração (m/s²) - Eixo Z</div>
-                  <div className="h-[80px]">
-                    {chartData.acceleration.length === 0 ? (
+                  <div className="text-xs font-medium mb-2">Aceleração (m/s²)</div>
+                  <div className="h-[120px]">
+                    {chartData.acceleration.data.length === 0 ? (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
                         Sem dados de aceleração disponíveis
                       </div>
                     ) : (
                       <ResponsiveContainer width="100%" height="100%">
-                        <RechartsLine data={chartData.acceleration}>
+                        <RechartsLine data={chartData.acceleration.data}>
                           <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                          <YAxis domain={[5, 12]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                          <YAxis domain={['auto', 'auto']} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                           <Tooltip />
+                          <Legend wrapperStyle={{ fontSize: 9 }} />
                           <ReferenceLine 
                             y={chartData.thresholds.acceleration.normal} 
                             stroke="hsl(var(--warning))" 
@@ -421,7 +428,9 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                             stroke="hsl(var(--destructive))" 
                             strokeDasharray="4 2"
                           />
-                          <Line type="monotone" dataKey="value" stroke="hsl(var(--chart-2))" strokeWidth={1.5} dot={{ r: 2 }} name="Acel Z" />
+                          {chartData.acceleration.sensorIds.map((sensorId, idx) => (
+                            <Line key={sensorId} type="monotone" dataKey={sensorId} stroke={SENSOR_COLORS[idx % SENSOR_COLORS.length]} strokeWidth={1.5} dot={{ r: 2 }} />
+                          ))}
                         </RechartsLine>
                       </ResponsiveContainer>
                     )}
