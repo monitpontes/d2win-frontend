@@ -51,7 +51,7 @@ export default function Login() {
       <div className="mb-8 flex flex-col items-center">
         <div className="mb-4 flex items-center gap-3">
           <img src={d2winLogo} alt="D2WIN Logo" className="h-14 w-auto" />
-          <h1 className="text-4xl font-bold text-foreground">D2win</h1>
+          <h1 className="text-4xl font-bold text-foreground">d2win</h1>
         </div>
         <p className="text-lg text-muted-foreground">Monitoramento em tempo real</p>
       </div>
