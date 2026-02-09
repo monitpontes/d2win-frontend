@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useBridge } from '@/hooks/useBridges';
 import { useDevices } from '@/hooks/useDevices';
 import { useTelemetry } from '@/hooks/useTelemetry';
@@ -41,6 +41,7 @@ import {
 
 export default function BridgeDetail() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const { hasRole } = useAuth();
   const [selectedTab, setSelectedTab] = useState('monitoring');
   const [selectedSensor3D, setSelectedSensor3D] = useState<Bridge3DSensor | null>(null);
@@ -163,6 +164,15 @@ export default function BridgeDetail() {
     const updated = bridge3DSensors.find(s => s.id === selectedSensor3D.id);
     return updated || selectedSensor3D;
   }, [selectedSensor3D, bridge3DSensors]);
+
+  // Auto-select sensor from query param (deep-link from dashboard)
+  useEffect(() => {
+    const sensorParam = searchParams.get('sensor');
+    if (sensorParam && bridge3DSensors.length > 0 && !selectedSensor3D) {
+      const found = bridge3DSensors.find(s => s.name === sensorParam || s.id === sensorParam);
+      if (found) setSelectedSensor3D(found);
+    }
+  }, [bridge3DSensors, searchParams, selectedSensor3D]);
 
   // Loading state
   if (isLoadingBridge) {

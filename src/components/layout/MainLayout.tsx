@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
+import { ScrollToTop } from '@/components/ui/scroll-to-top';
 
 export function MainLayout() {
   return (
@@ -8,6 +9,7 @@ export function MainLayout() {
       <div className="flex flex-1">
         <Outlet />
       </div>
+      <ScrollToTop />
     </div>
   );
 }
