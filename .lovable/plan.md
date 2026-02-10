@@ -1,89 +1,74 @@
 
+# Plano: Filtrar legenda por tipo + dados reais + aumentar altura dos graficos
 
-# Plano: Foco no 3D ao abrir sensor + Filtrar legenda dos graficos
+## Problemas
 
-## 1. Scroll automatico para a Visualizacao 3D ao clicar num sensor
+1. A legenda mostra sensores que nao sao do tipo correto (ex: sensores de `command_box` aparecendo no grafico de frequencia)
+2. Sensores sem dados nos ultimos 10 pontos aparecem na legenda mas sem linha visivel
+3. No grafico de frequencia, nem todos os pontos de todos os sensores aparecem porque os dados nao estao sendo mapeados corretamente por timestamp
+4. Altura dos graficos (120px) e pequena para visualizar multiplos sensores
 
-### Problema
-Quando o usuario clica numa linha de sensor na tabela do dashboard, a pagina de detalhes abre mas nao foca na visualizacao 3D. O usuario precisa rolar manualmente para ver o sensor selecionado.
+## Solucao
 
-### Solucao
-No `BridgeDetail.tsx`, ao detectar o query param `sensor`, alem de selecionar o sensor, rolar a pagina ate a secao de Visualizacao 3D usando `scrollIntoView`.
+### Arquivo: `src/components/dashboard/BridgeCard.tsx`
 
-**Arquivo: `src/pages/BridgeDetail.tsx`**
+**Mudanca A: Filtrar sensores na legenda por tipo e por dados existentes**
 
-- Adicionar um `ref` no container da Visualizacao 3D (ex: `view3DRef`)
-- No `useEffect` que ja detecta o `sensor` param, apos selecionar o sensor, chamar `view3DRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })`
+Na funcao `buildSensorChart` (linhas 159-180), adicionar dois filtros:
 
-```typescript
-const view3DRef = useRef<HTMLDivElement>(null);
-
-useEffect(() => {
-  const sensorParam = searchParams.get('sensor');
-  if (sensorParam && bridge3DSensors.length > 0 && !selectedSensor3D) {
-    const found = bridge3DSensors.find(s => s.name === sensorParam || s.id === sensorParam);
-    if (found) {
-      setSelectedSensor3D(found);
-      // Scroll para a secao 3D
-      setTimeout(() => {
-        view3DRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 300);
-    }
-  }
-}, [bridge3DSensors, searchParams, selectedSensor3D]);
-```
-
-## 2. Filtrar legenda dos graficos - so sensores de frequencia e aceleracao
-
-### Problema
-Os graficos de frequencia e aceleracao mostram todos os sensores na legenda, incluindo sensores do tipo `command_box` que nao produzem dados de frequencia ou aceleracao. Isso polui a legenda com sensores irrelevantes.
-
-### Solucao
-No `BridgeCard.tsx`, ao construir o `chartData`, filtrar os `sensorIds` para incluir apenas sensores cujo `type` no banco de dados corresponda ao tipo do grafico:
-- Grafico de Frequencia: so sensores com `device.type === 'frequency'`
-- Grafico de Aceleracao: so sensores com `device.type === 'acceleration'`
-
-**Arquivo: `src/components/dashboard/BridgeCard.tsx`**
-
-Modificar a funcao `buildSensorChart` dentro do `useMemo` de `chartData`:
+1. Filtrar `timeSeriesData` apenas para sensores cujo `device.type` no banco corresponda ao tipo do grafico
+2. Apos agrupar, remover sensores que nao tenham pelo menos 1 valor nos ultimos 10 pontos
 
 ```typescript
 const buildSensorChart = (type: 'frequency' | 'acceleration') => {
-  // Filtrar dispositivos pelo tipo registrado no banco
+  // 1. Obter deviceIds validos pelo tipo configurado no banco
   const validDeviceIds = new Set(
     devices
       .filter(d => d.type === type)
       .map(d => d.deviceId)
   );
   
-  // Filtrar dados de telemetria apenas para sensores validos
+  // 2. Filtrar telemetria por tipo E por dispositivos validos
   const filtered = timeSeriesData.filter(d => 
     d.type === type && (validDeviceIds.size === 0 || validDeviceIds.has(d.deviceId))
   );
   
+  // 3. Agrupar por timestamp (logica existente)
   const sensorIds = [...new Set(filtered.map(d => d.deviceId))];
-  // ... resto da logica (timeMap, labels) permanece igual
+  const timeMap = new Map<string, Record<string, number | string>>();
+  filtered.forEach(d => {
+    const time = formatDateValue(d.timestamp, 'HH:mm:ss');
+    if (!timeMap.has(time)) timeMap.set(time, { time });
+    const row = timeMap.get(time)!;
+    const device = devices.find(dev => dev.deviceId === d.deviceId);
+    const label = device?.name || d.deviceId?.slice(-4) || 'Sensor';
+    row[label] = d.value;
+  });
+  
+  const sensorLabels = sensorIds.map(id => {
+    const device = devices.find(dev => dev.deviceId === id);
+    return device?.name || id?.slice(-4) || 'Sensor';
+  });
+  
+  const data = Array.from(timeMap.values()).slice(-10);
+  
+  // 4. Filtrar labels: so manter sensores que tenham >= 1 valor nos dados finais
+  const activeSensorLabels = sensorLabels.filter(label =>
+    data.some(row => row[label] !== undefined && row[label] !== null)
+  );
+  
+  return { data, sensorIds: activeSensorLabels };
 };
 ```
 
-Isso garante que:
-- Sensores `command_box` nao aparecem em nenhum grafico
-- Sensores `frequency` so aparecem no grafico de Frequencia
-- Sensores `acceleration` so aparecem no grafico de Aceleracao
+**Mudanca B: Aumentar altura dos graficos**
 
-## Resumo dos Arquivos a Modificar
+Alterar de `h-[120px]` para `h-[160px]` nos dois containers de grafico (linhas 373 e 408).
 
-| Arquivo | Mudanca |
-|---------|---------|
-| `src/pages/BridgeDetail.tsx` | Adicionar ref + scrollIntoView na secao 3D ao detectar sensor param |
-| `src/components/dashboard/BridgeCard.tsx` | Filtrar sensorIds no chartData pelo tipo do dispositivo no banco |
+## Resumo
 
-## Secao Tecnica
-
-O filtro da legenda usa o campo `device.type` que vem do banco de dados (via `useDevices`). Os tipos possiveis sao:
-- `frequency` - aparece no grafico de Frequencia
-- `acceleration` - aparece no grafico de Aceleracao  
-- `command_box` - nao aparece em nenhum grafico
-
-O scroll usa `scrollIntoView` com um `setTimeout` de 300ms para dar tempo ao React de renderizar o sensor selecionado antes de rolar.
-
+| Local | Mudanca |
+|-------|---------|
+| BridgeCard.tsx L159-180 | Filtrar por `device.type` e por dados existentes nos ultimos 10 pontos |
+| BridgeCard.tsx L373 | `h-[120px]` para `h-[160px]` (frequencia) |
+| BridgeCard.tsx L408 | `h-[120px]` para `h-[160px]` (aceleracao) |
