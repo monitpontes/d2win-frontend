@@ -157,13 +157,13 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
     }
 
     const buildSensorChart = (type: 'frequency' | 'acceleration') => {
-      // 1. Filter by device type from DB
-      const validDeviceIds = new Set(
-        devices.filter(d => d.type === type).map(d => d.deviceId)
+      // 1. Excluir apenas command_box (não produzem freq/accel)
+      const excludedDeviceIds = new Set(
+        devices.filter(d => d.type === 'command_box').map(d => d.deviceId)
       );
-      // 2. Filter telemetry by type AND valid devices
+      // 2. Filtrar pela telemetria (d.type) e excluir command_box
       const filtered = timeSeriesData.filter(d => 
-        d.type === type && (validDeviceIds.size === 0 || validDeviceIds.has(d.deviceId))
+        d.type === type && !excludedDeviceIds.has(d.deviceId)
       );
       const sensorIds = [...new Set(filtered.map(d => d.deviceId))];
       const timeMap = new Map<string, Record<string, number | string>>();
