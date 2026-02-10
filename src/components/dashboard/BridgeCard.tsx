@@ -157,26 +157,34 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
     }
 
     const buildSensorChart = (type: 'frequency' | 'acceleration') => {
-      const filtered = timeSeriesData.filter(d => d.type === type);
-      // Get unique sensor IDs
+      // 1. Filter by device type from DB
+      const validDeviceIds = new Set(
+        devices.filter(d => d.type === type).map(d => d.deviceId)
+      );
+      // 2. Filter telemetry by type AND valid devices
+      const filtered = timeSeriesData.filter(d => 
+        d.type === type && (validDeviceIds.size === 0 || validDeviceIds.has(d.deviceId))
+      );
       const sensorIds = [...new Set(filtered.map(d => d.deviceId))];
-      // Group by timestamp, merge sensor values into single row
       const timeMap = new Map<string, Record<string, number | string>>();
       filtered.forEach(d => {
         const time = formatDateValue(d.timestamp, 'HH:mm:ss');
         if (!timeMap.has(time)) timeMap.set(time, { time });
         const row = timeMap.get(time)!;
-        // Use device name from devices list if available
         const device = devices.find(dev => dev.deviceId === d.deviceId);
         const label = device?.name || d.deviceId?.slice(-4) || 'Sensor';
         row[label] = d.value;
       });
-      // Resolve sensor IDs to labels
       const sensorLabels = sensorIds.map(id => {
         const device = devices.find(dev => dev.deviceId === id);
         return device?.name || id?.slice(-4) || 'Sensor';
       });
-      return { data: Array.from(timeMap.values()).slice(-10), sensorIds: sensorLabels };
+      const data = Array.from(timeMap.values()).slice(-10);
+      // 3. Only keep sensors with at least 1 value in the final data
+      const activeSensorLabels = sensorLabels.filter(label =>
+        data.some(row => row[label] !== undefined && row[label] !== null)
+      );
+      return { data, sensorIds: activeSensorLabels };
     };
 
     return {
@@ -370,7 +378,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                 {/* Frequency Chart */}
                 <div className="border rounded-md p-2">
                   <div className="text-xs font-medium mb-2">Frequência (Hz)</div>
-                  <div className="h-[120px]">
+                  <div className="h-[160px]">
                     {chartData.frequency.data.length === 0 ? (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
                         Sem dados de frequência disponíveis
@@ -405,7 +413,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                 {/* Acceleration Chart */}
                 <div className="border rounded-md p-2">
                   <div className="text-xs font-medium mb-2">Aceleração (m/s²)</div>
-                  <div className="h-[120px]">
+                  <div className="h-[160px]">
                     {chartData.acceleration.data.length === 0 ? (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
                         Sem dados de aceleração disponíveis
