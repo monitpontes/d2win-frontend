@@ -33,7 +33,7 @@ export function Header() {
       {/* Logo */}
       <Link to="/dashboard" className="flex items-center gap-2">
         <img src={d2winLogo} alt="D2WIN" className="h-9 w-auto" />
-        <span className="text-xl font-bold text-foreground">d2win</span>
+        <span className="text-xl font-bold text-foreground">d2win - Monitoramento Estrutural</span>
       </Link>
 
       {/* Navigation */}
