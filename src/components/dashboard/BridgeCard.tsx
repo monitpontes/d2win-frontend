@@ -157,12 +157,24 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
     }
 
     const buildSensorChart = (type: 'frequency' | 'acceleration') => {
-      const excludedDeviceIds = new Set(
-        devices.filter(d => d.type === 'command_box').map(d => d.deviceId)
+      // Filtrar positivamente por devices configurados com o tipo correto
+      const validDeviceIds = new Set(
+        devices.filter(d => d.type === type).map(d => d.deviceId)
       );
-      const filtered = timeSeriesData.filter(d => 
-        d.type === type && !excludedDeviceIds.has(d.deviceId)
-      );
+      let filtered: typeof timeSeriesData;
+      if (validDeviceIds.size > 0) {
+        filtered = timeSeriesData.filter(d => 
+          d.type === type && validDeviceIds.has(d.deviceId)
+        );
+      } else {
+        // Fallback: se nenhum device cadastrado com esse tipo, excluir apenas command_box
+        const excludedDeviceIds = new Set(
+          devices.filter(d => d.type === 'command_box').map(d => d.deviceId)
+        );
+        filtered = timeSeriesData.filter(d => 
+          d.type === type && !excludedDeviceIds.has(d.deviceId)
+        );
+      }
 
       // 1. Agrupar dados por sensor
       const sensorDataMap = new Map<string, typeof filtered>();
@@ -432,7 +444,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                             strokeDasharray="4 2"
                           />
                           {chartData.frequency.sensorIds.map((sensorId, idx) => (
-                            <Line key={sensorId} type="monotone" dataKey={sensorId} stroke={SENSOR_COLORS[idx % SENSOR_COLORS.length]} strokeWidth={1.5} dot={{ r: 2 }} />
+                            <Line key={sensorId} type="monotone" dataKey={sensorId} stroke={SENSOR_COLORS[idx % SENSOR_COLORS.length]} strokeWidth={1.5} dot={{ r: 2 }} connectNulls={true} />
                           ))}
                         </RechartsLine>
                       </ResponsiveContainer>
@@ -467,7 +479,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                             strokeDasharray="4 2"
                           />
                           {chartData.acceleration.sensorIds.map((sensorId, idx) => (
-                            <Line key={sensorId} type="monotone" dataKey={sensorId} stroke={SENSOR_COLORS[idx % SENSOR_COLORS.length]} strokeWidth={1.5} dot={{ r: 2 }} />
+                            <Line key={sensorId} type="monotone" dataKey={sensorId} stroke={SENSOR_COLORS[idx % SENSOR_COLORS.length]} strokeWidth={1.5} dot={{ r: 2 }} connectNulls={true} />
                           ))}
                         </RechartsLine>
                       </ResponsiveContainer>
