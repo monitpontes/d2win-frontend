@@ -12,20 +12,43 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Activity, FileText, Camera, Settings, Calendar, MapPin, AlertTriangle, Wifi, WifiOff, Play, RefreshCw, FileUp, Download, Eye, Wrench, XCircle, CheckCircle, Clock, TriangleAlert, ExternalLink, FolderOpen, History, Video, Link as LinkIcon, Zap, Box, Table as TableIcon, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Activity,
+  FileText,
+  Camera,
+  Calendar,
+  MapPin,
+  AlertTriangle,
+  TriangleAlert,
+  FolderOpen,
+  Video,
+  Link as LinkIcon,
+  Zap,
+  Box,
+  Table as TableIcon,
+  Plus,
+  Pencil,
+  Trash2,
+  Loader2,
+  Download,
+  Eye,
+  Wrench,
+  XCircle,
+  CheckCircle,
+} from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { ComposedChart, ReferenceLine as ReferenceLineComposed } from 'recharts';
-import type { BridgeEvent, Intervention } from '@/types';
+import type { BridgeEvent } from '@/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
 import Bridge3D, { type Bridge3DSensor } from '@/components/bridge/Bridge3D';
 import DataAnalysisSection from '@/components/bridge/DataAnalysisSection';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { formatValue, formatDateValue, getSensorTypeLabel } from '@/lib/utils/formatValue';
+import { formatValue, formatDateValue } from '@/lib/utils/formatValue';
 import { useInterventions, type NewIntervention } from '@/hooks/useInterventions';
 import { CreateInterventionDialog } from '@/components/interventions/CreateInterventionDialog';
-import { exportInterventions, exportSensorData, exportEvents, generateBridgeReport, exportToJSON } from '@/lib/exportUtils';
+import { exportInterventions, generateBridgeReport, exportToJSON } from '@/lib/exportUtils';
 import { toast } from 'sonner';
 import { getSensorStatus } from '@/lib/utils/sensorStatus';
 import {
@@ -43,44 +66,73 @@ export default function BridgeDetail() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const { hasRole } = useAuth();
+
   const [selectedTab, setSelectedTab] = useState('monitoring');
   const [selectedSensor3D, setSelectedSensor3D] = useState<Bridge3DSensor | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<BridgeEvent | null>(null);
   const [isCreateInterventionOpen, setIsCreateInterventionOpen] = useState(false);
   const [editingIntervention, setEditingIntervention] = useState<(NewIntervention & { id: string }) | null>(null);
   const [deleteInterventionId, setDeleteInterventionId] = useState<string | null>(null);
-  const [selectedFolder, setSelectedFolder] = useState<{name: string; type: string; files: Array<{name: string; size: string; date: string; type: string}>} | null>(null);
+  const [selectedFolder, setSelectedFolder] = useState<{ name: string; type: string; files: Array<{ name: string; size: string; date: string; type: string }> } | null>(null);
 
   const { interventions, addIntervention, updateIntervention, deleteIntervention, getInterventionsByBridge } = useInterventions();
 
   // Use API to fetch bridge data
   const { bridge, isLoading: isLoadingBridge } = useBridge(id);
-  const { devices: sensors, isLoading: isLoadingSensors } = useDevices(undefined, id);
-  const { latestData: telemetryData, timeSeriesData, isLoading: isLoadingTelemetry } = useTelemetry(id);
+  const { devices: sensors } = useDevices(undefined, id);
+  const { latestData: telemetryData, timeSeriesData } = useTelemetry(id);
   const { rawLimits, limits } = useBridgeLimits(id);
-  
+
   // Converter limites da API para formato de thresholds
   const thresholds = useMemo(() => limitsToThresholds(rawLimits), [rawLimits]);
-  
+
   // Placeholder data for features not yet connected to API
   const events: BridgeEvent[] = [];
-  const cameras: any[] = [];
-  const schedules: any[] = [];
   const documents: any[] = [];
   const bridgeProblems: any[] = [];
   const bridgeInterventions = useMemo(() => getInterventionsByBridge(id || ''), [id, interventions, getInterventionsByBridge]);
 
   const canEdit = hasRole(['admin', 'gestor']);
 
+  // ========= CONFIG MANUAL DOS YAXIS =========
+  const Y_DOMAIN_FREQ: [number, number] = [3, 10];
+  const Y_DOMAIN_ACCEL: [number, number] = [9.5, 11];
+
+  /**
+   * Gera ticks dinâmicos dentro de um range fixo.
+   * - Mantém dinâmica (não hardcode de lista), mas respeita domínio manual.
+   * - step pode ser 1 (inteiro) ou 0.5 para melhorar leitura em 3..10.5
+   */
+  const makeTicks = (min: number, max: number, step: number) => {
+    const safeStep = step > 0 ? step : 1;
+    const start = Math.ceil(min / safeStep) * safeStep;
+    const ticks: number[] = [];
+    // evita loop infinito por float: arredonda
+    const round = (v: number) => Math.round(v * 1000) / 1000;
+
+    for (let v = start; v <= max + 1e-9; v += safeStep) {
+      ticks.push(round(v));
+    }
+
+    // garante min/max se quiser “fechar” o gráfico:
+    if (ticks.length === 0) return [min, max];
+    if (ticks[0] > min) ticks.unshift(min);
+    const last = ticks[ticks.length - 1];
+    if (last < max) ticks.push(max);
+
+    return ticks;
+  };
+
+  // ticks "dinâmicos" (gerados por função) porém domínio manual fixo
+  const freqTicks = useMemo(() => makeTicks(Y_DOMAIN_FREQ[0], Y_DOMAIN_FREQ[1], 0.5), []);
+  const accelTicks = useMemo(() => makeTicks(Y_DOMAIN_ACCEL[0], Y_DOMAIN_ACCEL[1], 0.5), []);
+
   // Build 3D sensor data from real telemetry - MUST be before any early returns
-  // Cross-reference sensors from database with telemetry data
   const bridge3DSensors: Bridge3DSensor[] = useMemo(() => {
-    // Create telemetry map by deviceId
     const telemetryByDevice = new Map(
       telemetryData.map(t => [t.deviceId, t])
     );
 
-    // Map status to Bridge3DSensor expected format
     const statusMap: Record<string, Bridge3DSensor['status']> = {
       normal: 'normal',
       attention: 'warning',
@@ -89,22 +141,21 @@ export default function BridgeDetail() {
       critical: 'critical',
     };
 
-    // If we have sensors from database, use them as base (preserves names)
     if (sensors.length > 0) {
       return sensors.map((sensor, idx) => {
-        // Find matching telemetry by deviceId or name
-        const telemetry = telemetryByDevice.get(sensor.deviceId) || 
-                          telemetryByDevice.get(sensor.name);
-        
-        const isFrequency = sensor.type === 'frequency' || 
-                            telemetry?.modoOperacao === 'frequencia';
+        const telemetry = telemetryByDevice.get(sensor.deviceId) ||
+          telemetryByDevice.get(sensor.name);
+
+        const isFrequency = sensor.type === 'frequency' ||
+          telemetry?.modoOperacao === 'frequencia';
+
         const value = isFrequency ? telemetry?.frequency : telemetry?.acceleration?.z;
         const sensorType = isFrequency ? 'frequency' : 'acceleration';
         const statusResult = getSensorStatus(value, sensorType, thresholds);
-        
+
         return {
           id: sensor.deviceId || sensor.name,
-          name: sensor.name,  // Name from database
+          name: sensor.name,
           position: `Viga ${idx + 1}`,
           type: isFrequency ? 'Frequência' as const : 'Aceleração' as const,
           deviceType: isFrequency ? 'frequencia' as const : 'aceleracao' as const,
@@ -119,7 +170,6 @@ export default function BridgeDetail() {
       });
     }
 
-    // Fallback: use telemetry directly if no sensors in database
     if (!telemetryData || telemetryData.length === 0) {
       return Array.from({ length: 5 }, (_, i) => ({
         id: `S${i + 1}`,
@@ -142,7 +192,7 @@ export default function BridgeDetail() {
 
       return {
         id: telemetry.deviceId || `S${idx + 1}`,
-        name: telemetry.deviceId || `Sensor S${idx + 1}`,  // deviceId as name
+        name: telemetry.deviceId || `Sensor S${idx + 1}`,
         position: `Viga ${idx + 1}`,
         type: isFrequency ? 'Frequência' as const : 'Aceleração' as const,
         deviceType: isFrequency ? 'frequencia' as const : 'aceleracao' as const,
@@ -157,15 +207,12 @@ export default function BridgeDetail() {
     });
   }, [sensors, telemetryData, thresholds]);
 
-  // Sync selected sensor with real-time data from bridge3DSensors
   const currentSelectedSensor = useMemo(() => {
     if (!selectedSensor3D) return null;
-    // Find updated version in bridge3DSensors (which gets WebSocket updates)
     const updated = bridge3DSensors.find(s => s.id === selectedSensor3D.id);
     return updated || selectedSensor3D;
   }, [selectedSensor3D, bridge3DSensors]);
 
-  // Auto-select sensor from query param (deep-link from dashboard)
   useEffect(() => {
     const sensorParam = searchParams.get('sensor');
     if (sensorParam && bridge3DSensors.length > 0 && !selectedSensor3D) {
@@ -174,7 +221,6 @@ export default function BridgeDetail() {
     }
   }, [bridge3DSensors, searchParams, selectedSensor3D]);
 
-  // Loading state
   if (isLoadingBridge) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-6">
@@ -196,19 +242,8 @@ export default function BridgeDetail() {
     );
   }
 
-  // Generate mock chart data with reference lines
-  const chartData = Array.from({ length: 48 }, (_, i) => {
-    const hour = Math.floor(i / 2);
-    const minute = (i % 2) * 30;
-    return {
-      time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
-      frequencyX: 2.3 + Math.random() * 0.4,
-      frequencyZ: 2.1 + Math.random() * 0.3,
-      accelerationX: 0.03 + Math.random() * 0.02,
-      accelerationY: 0.02 + Math.random() * 0.015,
-      accelerationZ: 0.04 + Math.random() * 0.025,
-    };
-  });
+  // Sem histórico por enquanto
+  const chartData: any[] = [];
 
   const getStructuralStatusConfig = (status: StructuralStatus) => {
     const configs: Record<StructuralStatus, { label: string; className: string; badgeClass: string }> = {
@@ -272,7 +307,6 @@ export default function BridgeDetail() {
     return configs[criticality] || { label: criticality.toUpperCase(), className: 'bg-muted' };
   };
 
-  // Mock service statuses
   const serviceStatuses = [
     { name: 'Aquisição de Dados', status: 'online', description: 'Operacional' },
     { name: 'Processamento de Sinais', status: 'online', description: 'Operacional' },
@@ -280,7 +314,6 @@ export default function BridgeDetail() {
     { name: 'Sincronização Cloud', status: 'online', description: 'Operacional' },
   ];
 
-  // Mock system events
   const systemEvents = [
     { time: '10:23', description: 'Backup automático concluído com sucesso' },
     { time: '09:15', description: 'Sensor F3 reportou variação de frequência' },
@@ -290,7 +323,6 @@ export default function BridgeDetail() {
   const structuralStatusConfig = getStructuralStatusConfig(bridge.structuralStatus);
   const needsIntervention = ['critico', 'interdicao'].includes(bridge.structuralStatus);
 
-  // Mock cameras data for the bridge
   const mockBridgeCameras = [
     { id: 1, name: 'Câmera 1', location: 'Vão 1 - Vista lateral', image: bridge.image },
     { id: 2, name: 'Câmera 2', location: 'Vão 2 - Vista lateral', image: 'https://images.unsplash.com/photo-1545296664-39db56ad95bd?w=800' },
@@ -323,7 +355,7 @@ export default function BridgeDetail() {
               {bridge.structuralStatus === 'critico' ? 'Crítico' : structuralStatusConfig.label}
             </Badge>
             {needsIntervention && (
-              <button 
+              <button
                 onClick={() => setSelectedTab('monitoring')}
                 className="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 hover:underline transition-all cursor-pointer"
               >
@@ -339,34 +371,19 @@ export default function BridgeDetail() {
       <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1">
         <div className="border-b bg-card">
           <TabsList className="h-14 w-full justify-stretch gap-0 rounded-none bg-transparent p-0">
-            <TabsTrigger 
-              value="monitoring" 
-              className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="monitoring" className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
               Monitoramento e Dados
             </TabsTrigger>
-            <TabsTrigger 
-              value="specifications" 
-              className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="specifications" className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
               Especificações
             </TabsTrigger>
-            <TabsTrigger 
-              value="cameras" 
-              className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="cameras" className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
               Câmeras
             </TabsTrigger>
-            <TabsTrigger 
-              value="service" 
-              className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="service" className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
               Dashboard de Serviço
             </TabsTrigger>
-            <TabsTrigger 
-              value="schedules" 
-              className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="schedules" className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
               Programações
             </TabsTrigger>
           </TabsList>
@@ -394,8 +411,10 @@ export default function BridgeDetail() {
                       accelerationLimits={{ normalToAlert: limits.accelAlert, alertToCritical: limits.accelCritical }}
                     />
                   </div>
+
                   <div className="space-y-4">
                     <h4 className="font-medium">Dados dos Sensores</h4>
+
                     {currentSelectedSensor ? (
                       <div className="space-y-4">
                         {/* Sensor Info */}
@@ -415,27 +434,35 @@ export default function BridgeDetail() {
                           <div className="flex justify-between items-center py-1 border-b">
                             <span className="text-muted-foreground text-sm">Status:</span>
                             <div className="flex items-center gap-2">
-                              <div className={cn(
-                                "w-2 h-2 rounded-full",
-                                currentSelectedSensor.status === 'alert' || currentSelectedSensor.status === 'critical' 
-                                  ? 'bg-destructive' 
-                                  : currentSelectedSensor.status === 'warning' 
-                                  ? 'bg-warning' 
-                                  : 'bg-success'
-                              )} />
-                              <Badge variant={
-                                currentSelectedSensor.status === 'alert' || currentSelectedSensor.status === 'critical' 
-                                  ? 'destructive' 
-                                  : currentSelectedSensor.status === 'warning' 
-                                  ? 'outline' 
-                                  : 'secondary'
-                              } className="text-xs">
-                                {currentSelectedSensor.status === 'alert' || currentSelectedSensor.status === 'critical' ? 'Alerta' : 
-                                 currentSelectedSensor.status === 'warning' ? 'Atenção' : 'Normal'}
+                              <div
+                                className={cn(
+                                  "w-2 h-2 rounded-full",
+                                  currentSelectedSensor.status === 'alert' || currentSelectedSensor.status === 'critical'
+                                    ? 'bg-destructive'
+                                    : currentSelectedSensor.status === 'warning'
+                                      ? 'bg-warning'
+                                      : 'bg-success'
+                                )}
+                              />
+                              <Badge
+                                variant={
+                                  currentSelectedSensor.status === 'alert' || currentSelectedSensor.status === 'critical'
+                                    ? 'destructive'
+                                    : currentSelectedSensor.status === 'warning'
+                                      ? 'outline'
+                                      : 'secondary'
+                                }
+                                className="text-xs"
+                              >
+                                {currentSelectedSensor.status === 'alert' || currentSelectedSensor.status === 'critical'
+                                  ? 'Alerta'
+                                  : currentSelectedSensor.status === 'warning'
+                                    ? 'Atenção'
+                                    : 'Normal'}
                               </Badge>
                             </div>
                           </div>
-                          
+
                           {currentSelectedSensor.deviceType === 'frequencia' && (
                             <>
                               <div className="flex justify-between items-center py-1 border-b">
@@ -456,23 +483,20 @@ export default function BridgeDetail() {
                               </div>
                             </>
                           )}
-                          
+
                           {currentSelectedSensor.deviceType === 'aceleracao' && (
-                            <>
-                              <div className="flex justify-between items-center py-1 border-b">
-                                <span className="text-muted-foreground text-sm">Aceleração Z:</span>
-                                <span className="font-bold text-sm">{currentSelectedSensor.acceleration?.toFixed(2) || '-'} m/s²</span>
-                              </div>
-                            </>
+                            <div className="flex justify-between items-center py-1 border-b">
+                              <span className="text-muted-foreground text-sm">Aceleração Z:</span>
+                              <span className="font-bold text-sm">{currentSelectedSensor.acceleration?.toFixed(2) || '-'} m/s²</span>
+                            </div>
                           )}
-                          
+
                           <div className="flex justify-between items-center py-1">
                             <span className="text-muted-foreground text-sm">Timestamp:</span>
                             <span className="font-mono text-xs">
-                              {currentSelectedSensor.timestamp 
+                              {currentSelectedSensor.timestamp
                                 ? format(new Date(currentSelectedSensor.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })
-                                : '-'
-                              }
+                                : '-'}
                             </span>
                           </div>
                         </div>
@@ -480,17 +504,16 @@ export default function BridgeDetail() {
                         {/* Sensor Chart - Last 8 readings from real timeSeriesData */}
                         <div className="rounded-lg border bg-card p-4">
                           <h5 className="font-medium text-sm mb-2">
-                            {currentSelectedSensor.deviceType === 'frequencia' 
+                            {currentSelectedSensor.deviceType === 'frequencia'
                               ? 'Frequência - Últimas Leituras'
-                              : 'Aceleração - Últimas Leituras'
-                            }
+                              : 'Aceleração - Últimas Leituras'}
                           </h5>
-                          <div className="h-36">
+
+                          <div className="h-52">
                             <ResponsiveContainer width="100%" height="100%">
                               {currentSelectedSensor.deviceType === 'frequencia' ? (
-                                // Gráfico de Frequência - 2 linhas (Pico 1 e Pico 2)
-                                <LineChart data={
-                                  timeSeriesData
+                                <LineChart
+                                  data={timeSeriesData
                                     .filter(point => point.deviceId === currentSelectedSensor.id && point.type === 'frequency')
                                     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                                     .slice(-8)
@@ -498,114 +521,94 @@ export default function BridgeDetail() {
                                       time: format(new Date(point.timestamp), 'HH:mm:ss'),
                                       peak1: point.value,
                                       peak2: point.peak2,
-                                    }))
-                                }>
+                                    }))}
+                                >
                                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
                                   <XAxis dataKey="time" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={40} />
-                                  <YAxis 
-                                    tick={{ fontSize: 9 }} 
-                                    domain={[0, 8]}
-                                    width={50}
-                                    tickFormatter={(v) => `${v.toFixed(1)}`}
+
+                                  {/* ====== YAXIS FIXO (3 a 10.5) + TICKS DINÂMICOS ====== */}
+                                  <YAxis
+                                    tick={{ fontSize: 9 }}
+                                    domain={Y_DOMAIN_FREQ}
+                                    ticks={freqTicks}
+                                    width={55}
+                                    tickFormatter={(v) => `${Number(v).toFixed(1)}`}
                                     label={{ value: 'Hz', angle: -90, position: 'insideLeft', fontSize: 9 }}
                                   />
-                                  <Tooltip 
+
+                                  <Tooltip
                                     contentStyle={{ fontSize: 11 }}
                                     formatter={(value: number, name: string) => [
                                       `${value?.toFixed(2) ?? '-'} Hz`,
-                                      name === 'peak1' ? 'Pico 1' : 'Pico 2'
+                                      name === 'peak1' ? 'Pico 1' : 'Pico 2',
                                     ]}
                                   />
-                                  <Legend 
+                                  <Legend
                                     wrapperStyle={{ fontSize: 10 }}
-                                    formatter={(value) => {
-                                      if (value === 'peak1') return 'Pico 1';
-                                      if (value === 'peak2') return 'Pico 2';
-                                      return value;
-                                    }}
+                                    formatter={(value) => (value === 'peak1' ? 'Pico 1' : value === 'peak2' ? 'Pico 2' : value)}
                                   />
-                                  <ReferenceLine 
-                                    y={limits.freqAlert} 
-                                    stroke="hsl(var(--warning))" 
+
+                                  {/* Reference lines continuam, mas NÃO mexem no YAxis */}
+                                  <ReferenceLine
+                                    y={limits.freqAlert}
+                                    stroke="hsl(var(--warning))"
                                     strokeDasharray="4 2"
                                     label={{ value: `Atenção ${limits.freqAlert}`, position: 'right', fontSize: 8, fill: 'hsl(var(--warning))' }}
                                   />
-                                  <ReferenceLine 
-                                    y={limits.freqCritical} 
-                                    stroke="hsl(var(--destructive))" 
+                                  <ReferenceLine
+                                    y={limits.freqCritical}
+                                    stroke="hsl(var(--destructive))"
                                     strokeDasharray="4 2"
                                     label={{ value: `Alerta ${limits.freqCritical}`, position: 'right', fontSize: 8, fill: 'hsl(var(--destructive))' }}
                                   />
-                                  <Line 
-                                    type="monotone" 
-                                    dataKey="peak1" 
-                                    stroke="hsl(var(--primary))" 
-                                    strokeWidth={2} 
-                                    dot={{ r: 3, fill: 'hsl(var(--primary))' }}
-                                    name="peak1"
-                                  />
-                                  <Line 
-                                    type="monotone" 
-                                    dataKey="peak2" 
-                                    stroke="hsl(var(--chart-2))" 
-                                    strokeWidth={2} 
-                                    dot={{ r: 3, fill: 'hsl(var(--chart-2))' }}
-                                    name="peak2"
-                                    connectNulls={false}
-                                  />
+
+                                  <Line type="monotone" dataKey="peak1" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3, fill: 'hsl(var(--primary))' }} name="peak1" />
+                                  <Line type="monotone" dataKey="peak2" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={{ r: 3, fill: 'hsl(var(--chart-2))' }} name="peak2" connectNulls={false} />
                                 </LineChart>
                               ) : (
-                                // Gráfico de Aceleração - 1 linha
-                                <LineChart data={
-                                  timeSeriesData
+                                <LineChart
+                                  data={timeSeriesData
                                     .filter(point => point.deviceId === currentSelectedSensor.id && point.type === 'acceleration')
                                     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                                     .slice(-8)
                                     .map(point => ({
                                       time: format(new Date(point.timestamp), 'HH:mm:ss'),
                                       value: point.value,
-                                    }))
-                                }>
+                                    }))}
+                                >
                                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
                                   <XAxis dataKey="time" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={40} />
-                                  <YAxis 
-                                    tick={{ fontSize: 9 }} 
-                                    domain={[5, 12]}
-                                    width={55}
-                                    tickFormatter={(v) => `${v.toFixed(1)}`}
+
+                                  {/* ====== YAXIS FIXO (9 a 12) + TICKS DINÂMICOS ====== */}
+                                  <YAxis
+                                    tick={{ fontSize: 9 }}
+                                    domain={Y_DOMAIN_ACCEL}
+                                    ticks={accelTicks}
+                                    width={60}
+                                    tickFormatter={(v) => `${Number(v).toFixed(1)}`}
                                     label={{ value: 'm/s²', angle: -90, position: 'insideLeft', fontSize: 9 }}
                                   />
-                                  <Tooltip 
+
+                                  <Tooltip
                                     contentStyle={{ fontSize: 11 }}
-                                    formatter={(value: number) => [
-                                      `${value.toFixed(4)} m/s²`,
-                                      'Aceleração'
-                                    ]}
+                                    formatter={(value: number) => [`${value.toFixed(4)} m/s²`, 'Aceleração']}
                                   />
-                                  <Legend 
-                                    wrapperStyle={{ fontSize: 10 }}
-                                    formatter={(value) => value === 'value' ? 'Aceleração' : value}
-                                  />
-                                  <ReferenceLine 
-                                    y={limits.accelAlert} 
-                                    stroke="hsl(var(--warning))" 
+                                  <Legend wrapperStyle={{ fontSize: 10 }} formatter={(value) => (value === 'value' ? 'Aceleração' : value)} />
+
+                                  <ReferenceLine
+                                    y={limits.accelAlert}
+                                    stroke="hsl(var(--warning))"
                                     strokeDasharray="4 2"
                                     label={{ value: `Atenção ${limits.accelAlert}`, position: 'right', fontSize: 8, fill: 'hsl(var(--warning))' }}
                                   />
-                                  <ReferenceLine 
-                                    y={limits.accelCritical} 
-                                    stroke="hsl(var(--destructive))" 
+                                  <ReferenceLine
+                                    y={limits.accelCritical}
+                                    stroke="hsl(var(--destructive))"
                                     strokeDasharray="4 2"
                                     label={{ value: `Alerta ${limits.accelCritical}`, position: 'right', fontSize: 8, fill: 'hsl(var(--destructive))' }}
                                   />
-                                  <Line 
-                                    type="monotone" 
-                                    dataKey="value" 
-                                    stroke="hsl(var(--primary))" 
-                                    strokeWidth={2} 
-                                    dot={{ r: 3, fill: 'hsl(var(--primary))' }}
-                                    name="value"
-                                  />
+
+                                  <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3, fill: 'hsl(var(--primary))' }} name="value" />
                                 </LineChart>
                               )}
                             </ResponsiveContainer>
@@ -619,6 +622,7 @@ export default function BridgeDetail() {
                         </p>
                       </div>
                     )}
+
                     <div className="text-xs text-muted-foreground space-y-1">
                       <p>• Utilize o mouse para girar a visualização</p>
                       <p>• Scroll para zoom</p>
@@ -637,7 +641,7 @@ export default function BridgeDetail() {
                   Sensores e Dados em Tempo Real
                 </CardTitle>
                 <CardDescription>
-                  Sistema de Monitoramento Estrutural (SHM) com 5 sensores instalados na OAE.<br/>
+                  Sistema de Monitoramento Estrutural (SHM) com 5 sensores instalados na OAE.<br />
                   Sensores utilizados: Acelerômetros triaxiais (1 Hz, 10 Hz, 50 Hz) (em todos os sensores exceto o 5) e 1 sensor de deformação (FBG) com frequência de 1 e 50 Hz. Não são utilizadas estações metereológicas nesta análise.
                 </CardDescription>
               </CardHeader>
@@ -647,12 +651,9 @@ export default function BridgeDetail() {
                     const isAlert = sensor.status === 'alert' || sensor.status === 'critical';
                     const isFrequency = sensor.deviceType === 'frequencia';
                     const value = isFrequency ? sensor.frequency1 : sensor.acceleration;
-                    
+
                     return (
-                      <Card key={sensor.id} className={cn(
-                        "border-2",
-                        isAlert ? 'border-destructive' : 'border-border'
-                      )}>
+                      <Card key={sensor.id} className={cn("border-2", isAlert ? 'border-destructive' : 'border-border')}>
                         <CardContent className="p-4">
                           <div className="flex justify-between items-start mb-3">
                             <div>
@@ -719,17 +720,27 @@ export default function BridgeDetail() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-64">
+                  <div className="h-96">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                         <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10 }} />
-                        <YAxis className="text-xs" domain={[1.5, 3.5]} tick={{ fontSize: 10 }} />
+
+                        {/* ====== YAXIS FIXO (3 a 10.5) + TICKS DINÂMICOS ====== */}
+                        <YAxis
+                          className="text-xs"
+                          domain={Y_DOMAIN_FREQ}
+                          ticks={freqTicks}
+                          tick={{ fontSize: 10 }}
+                          width={55}
+                          tickFormatter={(v) => `${Number(v).toFixed(1)}`}
+                        />
+
                         <Tooltip />
                         <Legend />
                         <ReferenceLine y={3.0} stroke="hsl(var(--destructive))" strokeDasharray="5 5" label={{ value: 'Limite', position: 'right', fontSize: 10 }} />
-                        <Line type="monotone" dataKey="frequencyX" stroke="hsl(220, 70%, 50%)" name="Eixo X" strokeWidth={1} dot={false} />
-                        <Line type="monotone" dataKey="frequencyZ" stroke="hsl(280, 70%, 50%)" name="Eixo Z" strokeWidth={1} dot={false} />
+                        <Line type="monotone" dataKey="frequencyX" stroke="hsl(220, 70%, 50%)" name="Eixo X" strokeWidth={2} dot={{ r: 2 }} />
+                        <Line type="monotone" dataKey="frequencyZ" stroke="hsl(280, 70%, 50%)" name="Eixo Z" strokeWidth={2} dot={{ r: 2 }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -749,17 +760,27 @@ export default function BridgeDetail() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-64">
+                  <div className="h-96">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                         <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10 }} />
-                        <YAxis className="text-xs" domain={[0, 0.1]} tick={{ fontSize: 10 }} />
+
+                        {/* ====== YAXIS FIXO (9 a 12) + TICKS DINÂMICOS ====== */}
+                        <YAxis
+                          className="text-xs"
+                          domain={Y_DOMAIN_ACCEL}
+                          ticks={accelTicks}
+                          tick={{ fontSize: 10 }}
+                          width={60}
+                          tickFormatter={(v) => `${Number(v).toFixed(1)}`}
+                        />
+
                         <Tooltip />
                         <Legend />
-                        <Line type="monotone" dataKey="accelerationX" stroke="hsl(0, 70%, 50%)" name="X" strokeWidth={1} dot={false} />
-                        <Line type="monotone" dataKey="accelerationY" stroke="hsl(120, 70%, 40%)" name="Y" strokeWidth={1} dot={false} />
-                        <Line type="monotone" dataKey="accelerationZ" stroke="hsl(40, 90%, 50%)" name="Z" strokeWidth={1} dot={false} />
+                        <Line type="monotone" dataKey="accelerationX" stroke="hsl(0, 70%, 50%)" name="X" strokeWidth={2} dot={{ r: 2 }} />
+                        <Line type="monotone" dataKey="accelerationY" stroke="hsl(120, 70%, 40%)" name="Y" strokeWidth={2} dot={{ r: 2 }} />
+                        <Line type="monotone" dataKey="accelerationZ" stroke="hsl(40, 90%, 50%)" name="Z" strokeWidth={2} dot={{ r: 2 }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -800,11 +821,7 @@ export default function BridgeDetail() {
                         const sensor = sensors.find((s) => s.id === event.sensorId);
                         const severityConfig = getSeverityConfig(event.severity);
                         return (
-                          <TableRow 
-                            key={event.id} 
-                            className="cursor-pointer hover:bg-muted/50"
-                            onClick={() => setSelectedEvent(event)}
-                          >
+                          <TableRow key={event.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedEvent(event)}>
                             <TableCell className="text-sm">
                               {format(new Date(event.timestamp), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                             </TableCell>
@@ -830,9 +847,7 @@ export default function BridgeDetail() {
                     )}
                   </TableBody>
                 </Table>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Clique em um evento para ver detalhes
-                </p>
+                <p className="text-xs text-muted-foreground mt-2">Clique em um evento para ver detalhes</p>
               </CardContent>
             </Card>
 
@@ -842,21 +857,19 @@ export default function BridgeDetail() {
                 <DialogHeader>
                   <DialogTitle>Detalhes do Evento Anômalo</DialogTitle>
                 </DialogHeader>
-                
+
                 {selectedEvent && (() => {
                   const sensor = sensors.find((s) => s.id === selectedEvent.sensorId);
                   const severityConfig = getSeverityConfig(selectedEvent.severity);
-                  
-                  // Generate 24h mock data
+
                   const hourlyData = Array.from({ length: 24 }, (_, i) => ({
                     time: `${String(i).padStart(2, '0')}:00`,
                     value: i >= 11 && i <= 13 ? (i === 12 ? 10.7 : 0.5 + Math.random() * 0.3) : 0.1 + Math.random() * 0.2,
                     isAnomaly: i === 12,
                   }));
-                  
+
                   return (
                     <div className="space-y-4">
-                      {/* Event Summary */}
                       <Card>
                         <CardContent className="pt-4">
                           <div className="flex items-start justify-between">
@@ -872,20 +885,17 @@ export default function BridgeDetail() {
                                 Valor registrado: <span className="text-destructive font-bold">10.706 m/s²</span>
                               </p>
                               <p className="text-sm text-muted-foreground">
-                                Sensor {sensor?.name || 'accel1-Z'} registrou valores 8821% acima da média por aproximadamente 31 minutos. 
-                                Aceleração RMS elevada no eixo Z: 10.706 m/s² (limite: 10.5 m/s²)
+                                Sensor {sensor?.name || 'accel1-Z'} registrou valores acima da média por aproximadamente 31 minutos.
+                                Aceleração RMS elevada no eixo Z: 10.706 m/s².
                               </p>
                             </div>
-                            <Badge 
-                              variant={selectedEvent.severity === 'critical' || selectedEvent.severity === 'high' ? 'destructive' : 'secondary'}
-                            >
+                            <Badge variant={selectedEvent.severity === 'critical' || selectedEvent.severity === 'high' ? 'destructive' : 'secondary'}>
                               {severityConfig.label}
                             </Badge>
                           </div>
                         </CardContent>
                       </Card>
 
-                      {/* Current Status */}
                       <Card className="border-l-4 border-l-green-500">
                         <CardContent className="pt-4">
                           <div className="flex items-center justify-between">
@@ -927,14 +937,23 @@ export default function BridgeDetail() {
                               <LineChart data={hourlyData}>
                                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
                                 <XAxis dataKey="time" tick={{ fontSize: 9 }} />
-                                <YAxis domain={[0, 12]} tick={{ fontSize: 9 }} label={{ value: 'Aceleração (m/s²)', angle: -90, position: 'insideLeft', fontSize: 10 }} />
+
+                                {/* Aqui eu também fixei para 9..12, como “todos os gráficos de aceleração” */}
+                                <YAxis
+                                  domain={Y_DOMAIN_ACCEL}
+                                  ticks={accelTicks}
+                                  tick={{ fontSize: 9 }}
+                                  label={{ value: 'Aceleração (m/s²)', angle: -90, position: 'insideLeft', fontSize: 10 }}
+                                  tickFormatter={(v) => `${Number(v).toFixed(1)}`}
+                                />
+
                                 <Tooltip />
                                 <ReferenceLine y={0.3} stroke="hsl(142, 76%, 36%)" strokeDasharray="5 5" />
-                                <Line 
-                                  type="monotone" 
-                                  dataKey="value" 
-                                  stroke="hsl(var(--primary))" 
-                                  strokeWidth={1.5} 
+                                <Line
+                                  type="monotone"
+                                  dataKey="value"
+                                  stroke="hsl(var(--primary))"
+                                  strokeWidth={1.5}
                                   dot={(props: any) => {
                                     const { cx, cy, payload } = props;
                                     if (payload.isAnomaly) {
@@ -993,7 +1012,6 @@ export default function BridgeDetail() {
 
           {/* Specifications Tab */}
           <TabsContent value="specifications" className="m-0 space-y-6">
-            {/* Photo and Info */}
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
@@ -1090,7 +1108,6 @@ export default function BridgeDetail() {
               </Card>
             </div>
 
-            {/* Geo-referenced Image */}
             <Card>
               <CardHeader>
                 <CardTitle>Imagem Georreferenciada</CardTitle>
@@ -1098,10 +1115,10 @@ export default function BridgeDetail() {
               </CardHeader>
               <CardContent>
                 <div className="aspect-[21/9] overflow-hidden rounded-lg bg-muted relative">
-                  <img 
-                    src="https://images.unsplash.com/photo-1569336415962-a4bd9f69cd83?w=1200" 
-                    alt="Mapa georreferenciado" 
-                    className="h-full w-full object-cover" 
+                  <img
+                    src="https://images.unsplash.com/photo-1569336415962-a4bd9f69cd83?w=1200"
+                    alt="Mapa georreferenciado"
+                    className="h-full w-full object-cover"
                   />
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-center text-white bg-black/50 p-4 rounded-lg">
@@ -1116,7 +1133,6 @@ export default function BridgeDetail() {
               </CardContent>
             </Card>
 
-            {/* Technical Integrations */}
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
@@ -1140,10 +1156,9 @@ export default function BridgeDetail() {
                     };
                     const Icon = iconMap[doc.type] || FileText;
                     const actionLabel = doc.type === 'cde' ? 'Acessar' : doc.type === 'api' ? (doc.status === 'connected' ? 'Conectado' : 'Conectar') : doc.type === 'bim' ? 'Em Breve' : 'Ver Pasta';
-                    
-                    // Mock files for each folder type
-                    const getMockFiles = (docType: string, docName: string) => {
-                      const filesByType: Record<string, Array<{name: string; size: string; date: string; type: string}>> = {
+
+                    const getMockFiles = (docType: string) => {
+                      const filesByType: Record<string, Array<{ name: string; size: string; date: string; type: string }>> = {
                         project: [
                           { name: 'Projeto_Estrutural_v3.pdf', size: '15.2 MB', date: '15/03/2021', type: 'pdf' },
                           { name: 'Planta_Baixa.dwg', size: '8.7 MB', date: '15/03/2021', type: 'dwg' },
@@ -1168,26 +1183,19 @@ export default function BridgeDetail() {
                       };
                       return filesByType[docType] || [];
                     };
-                    
+
                     const handleFolderClick = () => {
                       if (['project', 'report', 'video'].includes(doc.type)) {
-                        setSelectedFolder({
-                          name: doc.name,
-                          type: doc.type,
-                          files: getMockFiles(doc.type, doc.name)
-                        });
+                        setSelectedFolder({ name: doc.name, type: doc.type, files: getMockFiles(doc.type) });
                       } else if (doc.type === 'cde' && doc.url) {
                         window.open(doc.url, '_blank');
                       }
                     };
-                    
+
                     return (
                       <div key={doc.id} className="flex items-center justify-between rounded-lg border p-4 hover:bg-muted/50 transition-colors">
                         <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "p-2 rounded",
-                            doc.type === 'api' && doc.status === 'connected' ? 'bg-destructive/10 text-destructive' : 'bg-muted'
-                          )}>
+                          <div className={cn("p-2 rounded", doc.type === 'api' && doc.status === 'connected' ? 'bg-destructive/10 text-destructive' : 'bg-muted')}>
                             <Icon className="h-5 w-5" />
                           </div>
                           <div>
@@ -1195,13 +1203,10 @@ export default function BridgeDetail() {
                             <p className="text-xs text-muted-foreground">{doc.description}</p>
                           </div>
                         </div>
-                        <Button 
-                          variant={doc.status === 'connected' ? 'outline' : 'outline'} 
+                        <Button
+                          variant="outline"
                           size="sm"
-                          className={cn(
-                            doc.status === 'connected' && 'border-success text-success hover:bg-success/10',
-                            doc.status === 'pending' && 'opacity-50'
-                          )}
+                          className={cn(doc.status === 'connected' && 'border-success text-success hover:bg-success/10', doc.status === 'pending' && 'opacity-50')}
                           disabled={doc.status === 'pending'}
                           onClick={handleFolderClick}
                         >
@@ -1214,7 +1219,6 @@ export default function BridgeDetail() {
               </CardContent>
             </Card>
 
-            {/* Folder Contents Dialog */}
             <Dialog open={!!selectedFolder} onOpenChange={() => setSelectedFolder(null)}>
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
@@ -1226,7 +1230,7 @@ export default function BridgeDetail() {
                     {selectedFolder?.files.length} arquivo(s) disponível(is)
                   </DialogDescription>
                 </DialogHeader>
-                
+
                 <div className="space-y-2 max-h-[400px] overflow-y-auto">
                   {selectedFolder?.files.map((file, idx) => (
                     <div key={idx} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
@@ -1234,9 +1238,9 @@ export default function BridgeDetail() {
                         <div className={cn(
                           "p-2 rounded",
                           file.type === 'pdf' ? 'bg-destructive/10 text-destructive' :
-                          file.type === 'dwg' ? 'bg-primary/10 text-primary' :
-                          file.type === 'mp4' ? 'bg-purple-500/10 text-purple-600' :
-                          'bg-muted'
+                            file.type === 'dwg' ? 'bg-primary/10 text-primary' :
+                              file.type === 'mp4' ? 'bg-purple-500/10 text-purple-600' :
+                                'bg-muted'
                         )}>
                           {file.type === 'mp4' ? <Video className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                         </div>
@@ -1258,7 +1262,7 @@ export default function BridgeDetail() {
                     </div>
                   ))}
                 </div>
-                
+
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setSelectedFolder(null)}>
                     Fechar
@@ -1284,11 +1288,7 @@ export default function BridgeDetail() {
                 <div className="grid gap-4 md:grid-cols-2">
                   {mockBridgeCameras.map((camera) => (
                     <div key={camera.id} className="relative aspect-video overflow-hidden rounded-lg bg-muted group">
-                      <img 
-                        src={camera.image} 
-                        alt={camera.name} 
-                        className="h-full w-full object-cover transition-transform group-hover:scale-105" 
-                      />
+                      <img src={camera.image} alt={camera.name} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
                       <div className="absolute top-3 left-3">
                         <Badge className="bg-destructive text-destructive-foreground flex items-center gap-1">
                           <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
@@ -1327,7 +1327,6 @@ export default function BridgeDetail() {
                 </div>
               </CardHeader>
               <CardContent>
-                {/* KPI Cards */}
                 <div className="grid gap-4 md:grid-cols-4 mb-6">
                   <Card>
                     <CardContent className="p-4">
@@ -1379,7 +1378,6 @@ export default function BridgeDetail() {
                   </Card>
                 </div>
 
-                {/* Structural Problems */}
                 <div className="mb-6">
                   <h4 className="font-medium mb-3">Registro de Problemas Estruturais (Últimos 90 dias)</h4>
                   <div className="space-y-3">
@@ -1464,7 +1462,6 @@ export default function BridgeDetail() {
               </CardContent>
             </Card>
 
-            {/* Service Dashboard */}
             <Card>
               <CardHeader>
                 <CardTitle>Dashboard de Serviço</CardTitle>
@@ -1500,10 +1497,7 @@ export default function BridgeDetail() {
                   {serviceStatuses.map((service, i) => (
                     <div key={i} className="flex items-center justify-between rounded-lg border p-3">
                       <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-2 h-2 rounded-full",
-                          service.status === 'online' ? 'bg-success' : service.status === 'attention' ? 'bg-warning' : 'bg-destructive'
-                        )} />
+                        <div className={cn("w-2 h-2 rounded-full", service.status === 'online' ? 'bg-success' : service.status === 'attention' ? 'bg-warning' : 'bg-destructive')} />
                         <div>
                           <p className="font-medium">{service.name}</p>
                           <p className="text-xs text-muted-foreground">{service.description}</p>
@@ -1531,15 +1525,14 @@ export default function BridgeDetail() {
 
           {/* Schedules Tab */}
           <TabsContent value="schedules" className="m-0 space-y-4">
-            {/* Header with actions */}
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold">Programações e Intervenções</h3>
                 <p className="text-sm text-muted-foreground">{bridgeInterventions.length} intervenções agendadas para esta ponte</p>
               </div>
               <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => {
                     exportInterventions(bridgeInterventions);
@@ -1550,8 +1543,8 @@ export default function BridgeDetail() {
                   <Download className="h-4 w-4 mr-1" />
                   Exportar CSV
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => {
                     const report = generateBridgeReport(bridge, sensors, events, bridgeInterventions, bridgeProblems);
@@ -1571,7 +1564,6 @@ export default function BridgeDetail() {
               </div>
             </div>
 
-            {/* Interventions List */}
             {bridgeInterventions.length > 0 ? (
               bridgeInterventions.map((item) => (
                 <Card key={item.id} className="group">
@@ -1597,9 +1589,9 @@ export default function BridgeDetail() {
                         </div>
                         {canEdit && (
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               className="h-8 w-8"
                               onClick={() => setEditingIntervention({
                                 id: item.id,
@@ -1614,9 +1606,9 @@ export default function BridgeDetail() {
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               className="h-8 w-8 text-destructive hover:text-destructive"
                               onClick={() => setDeleteInterventionId(item.id)}
                             >
@@ -1685,14 +1677,14 @@ export default function BridgeDetail() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={() => {
                 if (deleteInterventionId) {
                   deleteIntervention(deleteInterventionId);
                   setDeleteInterventionId(null);
                   toast.success('Intervenção excluída com sucesso!');
                 }
-              }} 
+              }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Excluir

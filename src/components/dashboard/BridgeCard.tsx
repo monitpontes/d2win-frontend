@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Bridge, StructuralStatus } from '@/types';
 import { structuralStatusLabels } from '@/types';
@@ -25,18 +25,25 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { MapPin, Clock, ArrowRight, AlertTriangle, TableIcon, LineChart } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { LineChart as RechartsLine, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, Legend } from 'recharts';
+import {
+  LineChart as RechartsLine,
+  Line,
+  XAxis,
+  YAxis,
+  ResponsiveContainer,
+  Tooltip,
+  ReferenceLine,
+  Legend,
+} from 'recharts';
 import { useTelemetry } from '@/hooks/useTelemetry';
 import { useDevices } from '@/hooks/useDevices';
 import { useBridgeLimits } from '@/hooks/useBridgeLimits';
 import { limitsToThresholds } from '@/lib/api/bridgeLimits';
-import { 
-  getSensorStatus, 
-  calculateVariation, 
-  formatVariation, 
-  getVariationColor, 
+import {
+  getSensorStatus,
+  calculateVariation,
   getStatusConfig,
-  getReferenceText
+  getReferenceText,
 } from '@/lib/utils/sensorStatus';
 import { formatDateValue } from '@/lib/utils/formatValue';
 
@@ -50,67 +57,207 @@ type ViewMode = 'table' | 'chart';
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 const SENSOR_COLORS = ['#4F8EF7', '#34D399', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
 
-// Calculate if sensor is active based on 10-minute threshold
+const CHART_HEIGHT_CLASS = 'h-[240px]';
+
 const calculateActivityStatus = (timestamp: string | undefined): 'online' | 'offline' => {
   if (!timestamp) return 'offline';
   return (Date.now() - new Date(timestamp).getTime()) < TEN_MINUTES_MS ? 'online' : 'offline';
 };
+
+// ===== Legend custom (sensores + limites) =====
+type LegendThresholdItem = {
+  key: string;
+  label: string;
+  valueText: string;
+  color: string;
+};
+
+type LegendProps = {
+  sensors: string[];
+  colorMap: Map<string, string>;
+  selected: Set<string>;
+  onToggleSensor: (key: string) => void;
+  thresholds: LegendThresholdItem[];
+  enableFilter: boolean; // regra: só filtra quando tiver >2 sensores
+};
+
+function ChartLegend({
+  sensors,
+  colorMap,
+  selected,
+  onToggleSensor,
+  thresholds,
+  enableFilter,
+}: LegendProps) {
+  const hasFilter = enableFilter && selected.size > 0;
+
+  return (
+    <div className="flex w-full flex-col gap-2">
+      {/* Linha 1: sensores (centralizado) */}
+      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] leading-none">
+        {sensors.map((s) => {
+          const color = colorMap.get(s) ?? '#999';
+          const isDimmed = hasFilter && !selected.has(s);
+
+          return (
+            <button
+              key={s}
+              type="button"
+              className={cn(
+                'flex items-center gap-1.5 select-none',
+                enableFilter ? 'cursor-pointer' : 'cursor-default',
+                isDimmed && 'opacity-30'
+              )}
+              onClick={() => {
+                if (!enableFilter) return;
+                onToggleSensor(s);
+              }}
+              title={enableFilter ? 'Clique para ocultar/mostrar' : undefined}
+            >
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-[3px]"
+                style={{ backgroundColor: color }}
+              />
+              <span className="whitespace-nowrap">{s}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Linha 2: referências (abaixo, centralizado) */}
+      {thresholds.length > 0 && (
+        <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] leading-none opacity-90">
+          {thresholds.map((t) => (
+            <span key={t.key} className="flex items-center gap-1.5 select-none">
+              <span
+                className="inline-block h-[2px] w-5"
+                style={{
+                  backgroundColor: t.color,
+                  backgroundImage:
+                    'repeating-linear-gradient(to right, currentColor 0 6px, transparent 6px 10px)',
+                  color: t.color,
+                }}
+              />
+              <span className="whitespace-nowrap">
+                {t.label}: {t.valueText}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function BridgeCard({ bridge }: BridgeCardProps) {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [axisFilter, setAxisFilter] = useState<AxisFilter>('all');
 
-  // Fetch devices from database first (instant HTTP)
+  const [freqSelected, setFreqSelected] = useState<Set<string>>(new Set());
+  const [accSelected, setAccSelected] = useState<Set<string>>(new Set());
+
+  const toggleSelected = (key: string, type: 'frequency' | 'acceleration') => {
+    const setter = type === 'frequency' ? setFreqSelected : setAccSelected;
+    setter(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (viewMode !== 'chart') {
+      setFreqSelected(new Set());
+      setAccSelected(new Set());
+    }
+  }, [viewMode]);
+
   const { devices, isLoading: isDevicesLoading } = useDevices(undefined, bridge.id);
-  
-  // Fetch real telemetry data with cache support
   const { latestData, timeSeriesData, isLoading: isTelemetryLoading } = useTelemetry(bridge.id);
 
-  // Combined loading flag - only show content when BOTH are ready
   const isDataLoading = isDevicesLoading || isTelemetryLoading;
-  
-  // Fetch bridge limits and convert to thresholds
+
   const { rawLimits } = useBridgeLimits(bridge.id);
   const thresholds = useMemo(() => limitsToThresholds(rawLimits), [rawLimits]);
 
-  // Combine devices with telemetry - devices come first to show all sensors immediately
+  const deviceKindMap = useMemo(() => {
+    const m = new Map<string, 'frequency' | 'acceleration' | 'command_box' | 'unknown'>();
+
+    devices.forEach(d => {
+      if (d.type === 'frequency') m.set(d.deviceId, 'frequency');
+      else if (d.type === 'acceleration') m.set(d.deviceId, 'acceleration');
+      else if (d.type === 'command_box') m.set(d.deviceId, 'command_box');
+      else m.set(d.deviceId, 'unknown');
+    });
+
+    latestData.forEach(t => {
+      const current = m.get(t.deviceId);
+      if (current && current !== 'unknown') return;
+
+      const mode = String((t as any)?.modoOperacao ?? '').toLowerCase();
+      if (mode === 'frequencia') m.set(t.deviceId, 'frequency');
+      else if (mode === 'aceleracao') m.set(t.deviceId, 'acceleration');
+      else if (!current) m.set(t.deviceId, 'unknown');
+    });
+
+    return m;
+  }, [devices, latestData]);
+
+  const frequencyDeviceIds = useMemo(() => {
+    const out: string[] = [];
+    deviceKindMap.forEach((kind, deviceId) => {
+      if (kind === 'frequency') out.push(deviceId);
+    });
+    return out;
+  }, [deviceKindMap]);
+
+  const accelerationDeviceIds = useMemo(() => {
+    const out: string[] = [];
+    deviceKindMap.forEach((kind, deviceId) => {
+      if (kind === 'acceleration') out.push(deviceId);
+    });
+    return out;
+  }, [deviceKindMap]);
+
+  const excludedDeviceIds = useMemo(() => {
+    const out = new Set<string>();
+    deviceKindMap.forEach((kind, deviceId) => {
+      if (kind === 'command_box') out.add(deviceId);
+    });
+    return out;
+  }, [deviceKindMap]);
+
   const sensorReadings = useMemo(() => {
-    // Helper to format sensor name - use name if available, else last 4 chars of ID
     const formatSensorName = (name: string | undefined, id: string) => {
       if (name) return name;
       return `Sensor ${id.slice(-4)}`;
     };
 
-    // Helper to process telemetry data into a reading
     const processReading = (
       deviceId: string,
       deviceName: string | undefined,
       telemetry: typeof latestData[0] | undefined,
       deviceType?: string
     ) => {
-      // Determine type based on device type or telemetry mode
       const isFrequency = deviceType === 'frequency' || telemetry?.modoOperacao === 'frequencia';
       const type: 'frequency' | 'acceleration' = isFrequency ? 'frequency' : 'acceleration';
-      
-      // Extract value if telemetry exists
+
       let value: number | undefined;
       if (telemetry) {
-        if (isFrequency) {
-          value = telemetry.frequency;
-        } else {
-          value = telemetry.acceleration?.z;
-        }
+        if (isFrequency) value = telemetry.frequency;
+        else value = telemetry.acceleration?.z;
       }
-      
+
       const status = getSensorStatus(value, type, thresholds);
       const variation = calculateVariation(value, type, thresholds);
       const activityStatus = calculateActivityStatus(telemetry?.timestamp);
 
-      // Format display value
-      const displayValue = value !== undefined && value !== null
-        ? `${value.toFixed(2)} ${isFrequency ? 'Hz' : 'm/s²'}`
-        : '-';
+      const displayValue =
+        value !== undefined && value !== null
+          ? `${value.toFixed(2)} ${isFrequency ? 'Hz' : 'm/s²'}`
+          : '-';
 
       return {
         sensorName: formatSensorName(deviceName, deviceId),
@@ -124,18 +271,15 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
       };
     };
 
-    // If we have devices from the database, use them as the base
     if (devices.length > 0) {
       return devices.map(device => {
-        // Match using deviceId (string) instead of id (ObjectId)
-        const telemetry = latestData.find(t => 
+        const telemetry = latestData.find(t =>
           t.deviceId === device.deviceId || t.deviceId === device.name
         );
         return processReading(device.deviceId, device.name, telemetry, device.type);
       });
     }
 
-    // Fallback to latestData if no devices (API timeout or empty)
     if (latestData.length > 0) {
       return latestData.map(telemetry => {
         return processReading(telemetry.deviceId, undefined, telemetry);
@@ -145,45 +289,35 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
     return [];
   }, [devices, latestData, thresholds]);
 
-  // Count active sensors (data within last 10 minutes)
-  const activeSensorsCount = useMemo(() => 
-    sensorReadings.filter(r => r.activityStatus === 'online').length
-  , [sensorReadings]);
+  const activeSensorsCount = useMemo(
+    () => sensorReadings.filter(r => r.activityStatus === 'online').length,
+    [sensorReadings]
+  );
 
-  // Generate chart data grouped by sensor
   const chartData = useMemo(() => {
     if (!timeSeriesData || timeSeriesData.length === 0) {
-      return { frequency: { data: [], sensorIds: [] }, acceleration: { data: [], sensorIds: [] }, thresholds };
+      return {
+        frequency: { data: [], sensorIds: [] as string[] },
+        acceleration: { data: [], sensorIds: [] as string[] },
+        thresholds,
+      };
     }
 
     const buildSensorChart = (type: 'frequency' | 'acceleration') => {
-      // Filtrar positivamente por devices configurados com o tipo correto
-      const validDeviceIds = new Set(
-        devices.filter(d => d.type === type).map(d => d.deviceId)
-      );
-      let filtered: typeof timeSeriesData;
-      if (validDeviceIds.size > 0) {
-        filtered = timeSeriesData.filter(d => 
-          d.type === type && validDeviceIds.has(d.deviceId)
-        );
-      } else {
-        // Fallback: se nenhum device cadastrado com esse tipo, excluir apenas command_box
-        const excludedDeviceIds = new Set(
-          devices.filter(d => d.type === 'command_box').map(d => d.deviceId)
-        );
-        filtered = timeSeriesData.filter(d => 
-          d.type === type && !excludedDeviceIds.has(d.deviceId)
-        );
-      }
+      const allowedIds =
+        type === 'frequency' ? new Set(frequencyDeviceIds) : new Set(accelerationDeviceIds);
 
-      // 1. Agrupar dados por sensor
+      const filtered = timeSeriesData.filter(d => {
+        if (excludedDeviceIds.has(d.deviceId)) return false;
+        return allowedIds.has(d.deviceId);
+      });
+
       const sensorDataMap = new Map<string, typeof filtered>();
       filtered.forEach(d => {
         if (!sensorDataMap.has(d.deviceId)) sensorDataMap.set(d.deviceId, []);
         sensorDataMap.get(d.deviceId)!.push(d);
       });
 
-      // 2. Para cada sensor, pegar os últimos 10 pontos
       const allTimestamps = new Set<string>();
       const sensorLabelsMap = new Map<string, string>();
 
@@ -192,36 +326,36 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
         const label = device?.name || deviceId?.slice(-4) || 'Sensor';
         sensorLabelsMap.set(deviceId, label);
 
-        const sorted = [...points].sort((a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        const sorted = [...points].sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
-        sorted.slice(-10).forEach(d => {
-          allTimestamps.add(formatDateValue(d.timestamp, 'HH:mm:ss'));
+
+        sorted.slice(-10).forEach(p => {
+          allTimestamps.add(formatDateValue(p.timestamp, 'HH:mm:ss'));
         });
       });
 
-      // 3. Criar timeline ordenada com TODOS os timestamps
       const sortedTimes = [...allTimestamps].sort();
       const timeMap = new Map<string, Record<string, number | string>>();
       sortedTimes.forEach(time => timeMap.set(time, { time }));
 
-      // 4. Preencher valores de cada sensor nos timestamps correspondentes
       sensorDataMap.forEach((points, deviceId) => {
         const label = sensorLabelsMap.get(deviceId)!;
-        const sorted = [...points].sort((a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+
+        const sorted = [...points].sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
-        sorted.slice(-10).forEach(d => {
-          const time = formatDateValue(d.timestamp, 'HH:mm:ss');
+
+        sorted.slice(-10).forEach(p => {
+          const time = formatDateValue(p.timestamp, 'HH:mm:ss');
           const row = timeMap.get(time);
-          if (row) row[label] = d.value;
+          if (row) row[label] = p.value;
         });
       });
 
       const data = Array.from(timeMap.values());
       const sensorLabels = [...sensorLabelsMap.values()];
 
-      // 5. Só manter sensores com >= 1 valor
       const activeSensorLabels = sensorLabels.filter(label =>
         data.some(row => row[label] !== undefined && row[label] !== null)
       );
@@ -234,16 +368,47 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
       acceleration: buildSensorChart('acceleration'),
       thresholds,
     };
-  }, [timeSeriesData, thresholds, devices]);
+  }, [timeSeriesData, thresholds, devices, excludedDeviceIds, frequencyDeviceIds, accelerationDeviceIds]);
+
+  const freqColorMap = useMemo(() => {
+    const m = new Map<string, string>();
+    chartData.frequency.sensorIds.forEach((label, idx) => {
+      m.set(label, SENSOR_COLORS[idx % SENSOR_COLORS.length]);
+    });
+    return m;
+  }, [chartData.frequency.sensorIds]);
+
+  const accColorMap = useMemo(() => {
+    const m = new Map<string, string>();
+    chartData.acceleration.sensorIds.forEach((label, idx) => {
+      m.set(label, SENSOR_COLORS[idx % SENSOR_COLORS.length]);
+    });
+    return m;
+  }, [chartData.acceleration.sensorIds]);
+
+  const visibleFreqIds = useMemo(() => {
+    if (chartData.frequency.sensorIds.length > 2 && freqSelected.size > 0) {
+      return chartData.frequency.sensorIds.filter(id => freqSelected.has(id));
+    }
+    return chartData.frequency.sensorIds;
+  }, [chartData.frequency.sensorIds, freqSelected]);
+
+  const visibleAccIds = useMemo(() => {
+    if (chartData.acceleration.sensorIds.length > 2 && accSelected.size > 0) {
+      return chartData.acceleration.sensorIds.filter(id => accSelected.has(id));
+    }
+    return chartData.acceleration.sensorIds;
+  }, [chartData.acceleration.sensorIds, accSelected]);
 
   const filteredReadings = useMemo(() => {
     if (axisFilter === 'all') return sensorReadings;
     return sensorReadings.filter(r => r.axis === axisFilter);
   }, [sensorReadings, axisFilter]);
 
-  const alertCount = useMemo(() => 
-    sensorReadings.filter(r => r.status === 'alert' || r.status === 'attention').length
-  , [sensorReadings]);
+  const alertCount = useMemo(
+    () => sensorReadings.filter(r => r.status === 'alert' || r.status === 'attention').length,
+    [sensorReadings]
+  );
 
   const getBridgeStatusConfig = (status: Bridge['structuralStatus']) => {
     const configs: Record<StructuralStatus, { label: string; className: string }> = {
@@ -268,15 +433,66 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
   const statusConfig = getBridgeStatusConfig(bridge.structuralStatus);
   const criticalityConfig = getCriticalityConfig(bridge.operationalCriticality);
 
-  // Status indicator using imported getStatusConfig
   const renderStatusIndicator = (status: 'normal' | 'attention' | 'alert') => {
     const config = getStatusConfig(status);
     return <span className={cn('inline-block h-2.5 w-2.5 rounded-full', config.bgClass)} />;
   };
 
+  // ===== thresholds pra legenda (freq e accel) =====
+  // ✅ FREQUÊNCIA: trocar nomes/cores conforme você pediu:
+  // - reference (3.7) => Atenção (warning)
+  // - attention (7)   => Alerta (destructive)
+  const freqLegendThresholds = useMemo<LegendThresholdItem[]>(() => {
+    const att = chartData.thresholds?.frequency?.reference; // 3.7 => Atenção
+    const al = chartData.thresholds?.frequency?.attention;  // 7   => Alerta
+    const items: LegendThresholdItem[] = [];
+
+    if (att !== undefined && att !== null) {
+      items.push({
+        key: 'freq_attention',
+        label: 'Atenção',
+        valueText: `${Number(att).toFixed(2)} Hz`,
+        color: 'hsl(var(--warning))',
+      });
+    }
+
+    if (al !== undefined && al !== null) {
+      items.push({
+        key: 'freq_alert',
+        label: 'Alerta',
+        valueText: `${Number(al).toFixed(2)} Hz`,
+        color: 'hsl(var(--destructive))',
+      });
+    }
+
+    return items;
+  }, [chartData.thresholds]);
+
+  const accLegendThresholds = useMemo<LegendThresholdItem[]>(() => {
+    const att = chartData.thresholds?.acceleration?.normal; // atenção
+    const al = chartData.thresholds?.acceleration?.alert;   // alerta
+    const items: LegendThresholdItem[] = [];
+    if (att !== undefined && att !== null) {
+      items.push({
+        key: 'acc_attention',
+        label: 'Atenção',
+        valueText: `${Number(att).toFixed(2)} m/s²`,
+        color: 'hsl(var(--warning))',
+      });
+    }
+    if (al !== undefined && al !== null) {
+      items.push({
+        key: 'acc_alert',
+        label: 'Alerta',
+        valueText: `${Number(al).toFixed(2)} m/s²`,
+        color: 'hsl(var(--destructive))',
+      });
+    }
+    return items;
+  }, [chartData.thresholds]);
+
   return (
     <Card className="overflow-hidden transition-all hover:shadow-lg flex flex-col">
-      {/* Bridge Image Header */}
       {bridge.image && (
         <div className="relative h-36 w-full overflow-hidden">
           <img
@@ -290,7 +506,6 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
         </div>
       )}
 
-      {/* Header with name and typology */}
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -307,7 +522,6 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
           </Badge>
         </div>
 
-        {/* Specs Row */}
         <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t">
           <div>
             <p className="text-xs text-muted-foreground">Comprimento</p>
@@ -323,7 +537,6 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
           </div>
         </div>
 
-        {/* Criticality Badge */}
         <div className="mt-3">
           <span className="text-xs text-muted-foreground mr-1.5">Criticidade</span>
           <Badge variant="secondary" className={cn('text-xs', criticalityConfig.className)}>
@@ -334,7 +547,6 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
 
       <CardContent className="flex-1 pb-3">
         {isDataLoading ? (
-          /* Loading State - shows skeleton while devices and telemetry load */
           <div className="flex flex-col items-center justify-center py-8 space-y-3">
             <div className="flex space-x-2">
               <Skeleton className="h-4 w-4 rounded-full animate-pulse" />
@@ -350,7 +562,6 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
           </div>
         ) : (
           <>
-            {/* View Toggle and Axis Filter */}
             <div className="flex items-center justify-between mb-3">
               <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-auto">
                 <TabsList className="h-8">
@@ -379,7 +590,6 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
             </div>
 
             {viewMode === 'table' ? (
-              /* Table View */
               <div className="border rounded-md overflow-hidden">
                 <div className="max-h-[320px] overflow-auto">
                   <Table>
@@ -395,7 +605,11 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                     </TableHeader>
                     <TableBody>
                       {filteredReadings.map((reading, idx) => (
-                        <TableRow key={idx} className="h-8 cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/bridge/${bridge.id}?sensor=${encodeURIComponent(reading.sensorName)}`)}>
+                        <TableRow
+                          key={idx}
+                          className="h-8 cursor-pointer hover:bg-muted/50"
+                          onClick={() => navigate(`/bridge/${bridge.id}?sensor=${encodeURIComponent(reading.sensorName)}`)}
+                        >
                           <TableCell className="text-[11px] font-medium py-1 px-2 whitespace-nowrap">{reading.sensorName}</TableCell>
                           <TableCell className="text-[11px] py-1 px-2">
                             <Badge variant="outline" className="text-[9px] px-1 py-0 text-primary border-primary">
@@ -413,14 +627,13 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                 </div>
               </div>
             ) : (
-              /* Chart View */
               <div className="space-y-3">
                 <div className="text-xs font-medium text-muted-foreground">Últimos Dados por Sensor</div>
-                
+
                 {/* Frequency Chart */}
                 <div className="border rounded-md p-2">
                   <div className="text-xs font-medium mb-2">Frequência (Hz)</div>
-                  <div className="h-[160px]">
+                  <div className={CHART_HEIGHT_CLASS}>
                     {chartData.frequency.data.length === 0 ? (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
                         Sem dados de frequência disponíveis
@@ -429,22 +642,49 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                       <ResponsiveContainer width="100%" height="100%">
                         <RechartsLine data={chartData.frequency.data}>
                           <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                          <YAxis domain={[0, 8]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                          <YAxis domain={[3, 10.5]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                           <Tooltip />
-                          <Legend wrapperStyle={{ fontSize: 9 }} />
-                          <ReferenceLine 
-                            y={chartData.thresholds.frequency.reference} 
-                            stroke="hsl(var(--muted-foreground))" 
-                            strokeDasharray="4 2" 
-                            label={{ value: `Ref ${chartData.thresholds.frequency.reference}`, fontSize: 8, fill: 'hsl(var(--muted-foreground))' }}
+
+                          <Legend
+                            content={() => (
+                              <ChartLegend
+                                sensors={chartData.frequency.sensorIds}
+                                colorMap={freqColorMap}
+                                selected={freqSelected}
+                                enableFilter={chartData.frequency.sensorIds.length > 2}
+                                onToggleSensor={(k) => toggleSelected(k, 'frequency')}
+                                thresholds={freqLegendThresholds}
+                              />
+                            )}
                           />
-                          <ReferenceLine 
-                            y={chartData.thresholds.frequency.attention} 
-                            stroke="hsl(var(--warning))" 
+
+                          {/* ✅ Atenção = thresholds.frequency.reference (3.7) */}
+                          <ReferenceLine
+                            y={chartData.thresholds.frequency.reference}
+                            stroke="hsl(var(--warning))"
                             strokeDasharray="4 2"
                           />
-                          {chartData.frequency.sensorIds.map((sensorId, idx) => (
-                            <Line key={sensorId} type="monotone" dataKey={sensorId} stroke={SENSOR_COLORS[idx % SENSOR_COLORS.length]} strokeWidth={1.5} dot={{ r: 2 }} connectNulls={true} />
+
+                          {/* ✅ Alerta = thresholds.frequency.attention (7) */}
+                          <ReferenceLine
+                            y={chartData.thresholds.frequency.attention}
+                            stroke="hsl(var(--destructive))"
+                            strokeDasharray="4 2"
+                          />
+
+                          {visibleFreqIds.map((sensorId) => (
+                            <Line
+                              key={sensorId}
+                              type="monotone"
+                              dataKey={sensorId}
+                              stroke={freqColorMap.get(sensorId) ?? SENSOR_COLORS[0]}
+                              strokeWidth={1.5}
+                              dot={{ r: 2 }}
+                              connectNulls
+                              isAnimationActive={true}
+                              animationDuration={450}
+                              animationEasing="ease-out"
+                            />
                           ))}
                         </RechartsLine>
                       </ResponsiveContainer>
@@ -455,7 +695,7 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                 {/* Acceleration Chart */}
                 <div className="border rounded-md p-2">
                   <div className="text-xs font-medium mb-2">Aceleração (m/s²)</div>
-                  <div className="h-[160px]">
+                  <div className={CHART_HEIGHT_CLASS}>
                     {chartData.acceleration.data.length === 0 ? (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
                         Sem dados de aceleração disponíveis
@@ -464,22 +704,46 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
                       <ResponsiveContainer width="100%" height="100%">
                         <RechartsLine data={chartData.acceleration.data}>
                           <XAxis dataKey="time" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                          <YAxis domain={['auto', 'auto']} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                          <YAxis domain={[9, 13]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                           <Tooltip />
-                          <Legend wrapperStyle={{ fontSize: 9 }} />
-                          <ReferenceLine 
-                            y={chartData.thresholds.acceleration.normal} 
-                            stroke="hsl(var(--warning))" 
-                            strokeDasharray="4 2" 
-                            label={{ value: `Atenção ${chartData.thresholds.acceleration.normal}`, fontSize: 8, fill: 'hsl(var(--warning))' }}
+
+                          <Legend
+                            content={() => (
+                              <ChartLegend
+                                sensors={chartData.acceleration.sensorIds}
+                                colorMap={accColorMap}
+                                selected={accSelected}
+                                enableFilter={chartData.acceleration.sensorIds.length > 2}
+                                onToggleSensor={(k) => toggleSelected(k, 'acceleration')}
+                                thresholds={accLegendThresholds}
+                              />
+                            )}
                           />
-                          <ReferenceLine 
-                            y={chartData.thresholds.acceleration.alert} 
-                            stroke="hsl(var(--destructive))" 
+
+                          <ReferenceLine
+                            y={chartData.thresholds.acceleration.normal}
+                            stroke="hsl(var(--warning))"
                             strokeDasharray="4 2"
                           />
-                          {chartData.acceleration.sensorIds.map((sensorId, idx) => (
-                            <Line key={sensorId} type="monotone" dataKey={sensorId} stroke={SENSOR_COLORS[idx % SENSOR_COLORS.length]} strokeWidth={1.5} dot={{ r: 2 }} connectNulls={true} />
+                          <ReferenceLine
+                            y={chartData.thresholds.acceleration.alert}
+                            stroke="hsl(var(--destructive))"
+                            strokeDasharray="4 2"
+                          />
+
+                          {visibleAccIds.map((sensorId) => (
+                            <Line
+                              key={sensorId}
+                              type="monotone"
+                              dataKey={sensorId}
+                              stroke={accColorMap.get(sensorId) ?? SENSOR_COLORS[0]}
+                              strokeWidth={1.5}
+                              dot={{ r: 2 }}
+                              connectNulls
+                              isAnimationActive={true}
+                              animationDuration={450}
+                              animationEasing="ease-out"
+                            />
                           ))}
                         </RechartsLine>
                       </ResponsiveContainer>
@@ -491,7 +755,6 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
           </>
         )}
 
-        {/* Footer Stats */}
         <div className="flex items-center justify-between mt-3 pt-3 border-t text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
             <span className={activeSensorsCount > 0 ? 'text-success' : ''}>
@@ -505,11 +768,11 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
             </div>
           )}
         </div>
-        
+
         <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
           <Clock className="h-3 w-3" />
           <span>
-            Atualizado: {format(new Date(bridge.lastUpdate), "dd/MM/yyyy, HH:mm:ss")}
+            Atualizado: {format(new Date(bridge.lastUpdate), 'dd/MM/yyyy, HH:mm:ss')}
           </span>
         </div>
       </CardContent>
