@@ -157,33 +157,63 @@ export function BridgeCard({ bridge }: BridgeCardProps) {
     }
 
     const buildSensorChart = (type: 'frequency' | 'acceleration') => {
-      // 1. Excluir apenas command_box (não produzem freq/accel)
       const excludedDeviceIds = new Set(
         devices.filter(d => d.type === 'command_box').map(d => d.deviceId)
       );
-      // 2. Filtrar pela telemetria (d.type) e excluir command_box
       const filtered = timeSeriesData.filter(d => 
         d.type === type && !excludedDeviceIds.has(d.deviceId)
       );
-      const sensorIds = [...new Set(filtered.map(d => d.deviceId))];
-      const timeMap = new Map<string, Record<string, number | string>>();
+
+      // 1. Agrupar dados por sensor
+      const sensorDataMap = new Map<string, typeof filtered>();
       filtered.forEach(d => {
-        const time = formatDateValue(d.timestamp, 'HH:mm:ss');
-        if (!timeMap.has(time)) timeMap.set(time, { time });
-        const row = timeMap.get(time)!;
-        const device = devices.find(dev => dev.deviceId === d.deviceId);
-        const label = device?.name || d.deviceId?.slice(-4) || 'Sensor';
-        row[label] = d.value;
+        if (!sensorDataMap.has(d.deviceId)) sensorDataMap.set(d.deviceId, []);
+        sensorDataMap.get(d.deviceId)!.push(d);
       });
-      const sensorLabels = sensorIds.map(id => {
-        const device = devices.find(dev => dev.deviceId === id);
-        return device?.name || id?.slice(-4) || 'Sensor';
+
+      // 2. Para cada sensor, pegar os últimos 10 pontos
+      const allTimestamps = new Set<string>();
+      const sensorLabelsMap = new Map<string, string>();
+
+      sensorDataMap.forEach((points, deviceId) => {
+        const device = devices.find(dev => dev.deviceId === deviceId);
+        const label = device?.name || deviceId?.slice(-4) || 'Sensor';
+        sensorLabelsMap.set(deviceId, label);
+
+        const sorted = [...points].sort((a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        sorted.slice(-10).forEach(d => {
+          allTimestamps.add(formatDateValue(d.timestamp, 'HH:mm:ss'));
+        });
       });
-      const data = Array.from(timeMap.values()).slice(-10);
-      // 3. Only keep sensors with at least 1 value in the final data
+
+      // 3. Criar timeline ordenada com TODOS os timestamps
+      const sortedTimes = [...allTimestamps].sort();
+      const timeMap = new Map<string, Record<string, number | string>>();
+      sortedTimes.forEach(time => timeMap.set(time, { time }));
+
+      // 4. Preencher valores de cada sensor nos timestamps correspondentes
+      sensorDataMap.forEach((points, deviceId) => {
+        const label = sensorLabelsMap.get(deviceId)!;
+        const sorted = [...points].sort((a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        sorted.slice(-10).forEach(d => {
+          const time = formatDateValue(d.timestamp, 'HH:mm:ss');
+          const row = timeMap.get(time);
+          if (row) row[label] = d.value;
+        });
+      });
+
+      const data = Array.from(timeMap.values());
+      const sensorLabels = [...sensorLabelsMap.values()];
+
+      // 5. Só manter sensores com >= 1 valor
       const activeSensorLabels = sensorLabels.filter(label =>
         data.some(row => row[label] !== undefined && row[label] !== null)
       );
+
       return { data, sensorIds: activeSensorLabels };
     };
 
