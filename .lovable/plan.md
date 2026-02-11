@@ -1,93 +1,51 @@
 
 
-# Corrigir grafico de frequencia: ultimos 10 pontos POR sensor
+# Corrigir graficos: filtro por tipo do sensor + linhas conectadas
 
-## Problema
+## Problemas atuais
 
-O codigo atual agrupa todos os dados de todos os sensores por timestamp compartilhado. Como cada sensor envia dados em horarios diferentes, cada linha do `timeMap` acaba tendo valor de apenas 1 sensor. O `.slice(-10)` pega os ultimos 10 timestamps globais, que pertencem a poucos sensores, deixando os outros sem dados visiveis.
+1. **Frequencia**: Aparece so pontos isolados sem linhas conectando-os. Cada sensor tem timestamps diferentes, criando gaps (`undefined`) entre pontos, e o Recharts nao desenha linha quando encontra `undefined`.
+
+2. **Aceleracao**: Mesma situacao -- pontos soltos sem linhas, e aparecendo sensores que nao sao de aceleracao porque o filtro atual usa exclusao de `command_box` em vez de filtrar positivamente pelo tipo configurado.
+
+3. **Ambos os graficos**: Devem mostrar apenas sensores configurados como o tipo correto no banco de dados (`device.type === 'frequency'` ou `device.type === 'acceleration'`).
 
 ## Solucao
 
-Mudar a logica para pegar os **ultimos 10 pontos de CADA sensor** individualmente, e depois unir todos os timestamps num eixo de tempo completo. Isso significa que o eixo X pode ter mais de 10 horarios, mas cada sensor tera suas 10 leituras mais recentes.
+### Arquivo: `src/components/dashboard/BridgeCard.tsx`
 
-### Arquivo: `src/components/dashboard/BridgeCard.tsx` (linhas 159-187)
+**Mudanca 1 -- Filtro por tipo do sensor (linhas 159-165)**
 
-Nova logica do `buildSensorChart`:
+Voltar a filtrar positivamente por `device.type`:
 
-```typescript
-const buildSensorChart = (type: 'frequency' | 'acceleration') => {
-  const excludedDeviceIds = new Set(
-    devices.filter(d => d.type === 'command_box').map(d => d.deviceId)
-  );
-  const filtered = timeSeriesData.filter(d => 
-    d.type === type && !excludedDeviceIds.has(d.deviceId)
-  );
-  const sensorIds = [...new Set(filtered.map(d => d.deviceId))];
-  
-  // 1. Agrupar dados por sensor
-  const sensorDataMap = new Map<string, typeof filtered>();
-  filtered.forEach(d => {
-    if (!sensorDataMap.has(d.deviceId)) sensorDataMap.set(d.deviceId, []);
-    sensorDataMap.get(d.deviceId)!.push(d);
-  });
-  
-  // 2. Para cada sensor, pegar os ultimos 10 pontos
-  const allTimestamps = new Set<string>();
-  const sensorLabelsMap = new Map<string, string>();
-  
-  sensorDataMap.forEach((points, deviceId) => {
-    const device = devices.find(dev => dev.deviceId === deviceId);
-    const label = device?.name || deviceId?.slice(-4) || 'Sensor';
-    sensorLabelsMap.set(deviceId, label);
-    
-    // Ordenar por timestamp e pegar ultimos 10
-    const sorted = [...points].sort((a, b) => 
-      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    );
-    const last10 = sorted.slice(-10);
-    last10.forEach(d => {
-      allTimestamps.add(formatDateValue(d.timestamp, 'HH:mm:ss'));
-    });
-  });
-  
-  // 3. Criar timeline ordenada com TODOS os timestamps
-  const sortedTimes = [...allTimestamps].sort();
-  const timeMap = new Map<string, Record<string, number | string>>();
-  sortedTimes.forEach(time => timeMap.set(time, { time }));
-  
-  // 4. Preencher valores de cada sensor nos timestamps correspondentes
-  sensorDataMap.forEach((points, deviceId) => {
-    const label = sensorLabelsMap.get(deviceId)!;
-    const sorted = [...points].sort((a, b) => 
-      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    );
-    sorted.slice(-10).forEach(d => {
-      const time = formatDateValue(d.timestamp, 'HH:mm:ss');
-      const row = timeMap.get(time);
-      if (row) row[label] = d.value;
-    });
-  });
-  
-  const data = Array.from(timeMap.values());
-  const sensorLabels = [...sensorLabelsMap.values()];
-  
-  // 5. So manter sensores com >= 1 valor
-  const activeSensorLabels = sensorLabels.filter(label =>
-    data.some(row => row[label] !== undefined && row[label] !== null)
-  );
-  
-  return { data, sensorIds: activeSensorLabels };
-};
+```
+validDeviceIds = devices onde type === 'frequency' (ou 'acceleration')
+filtered = timeSeriesData onde type bate E deviceId esta nos validos
 ```
 
-### Diferenca principal
+Com fallback: se nenhum device estiver cadastrado com aquele tipo, usa exclusao de `command_box` para nao mostrar grafico vazio.
 
-| Antes | Depois |
-|-------|--------|
-| Agrupa todos os sensores por timestamp compartilhado | Pega ultimos 10 pontos de CADA sensor |
-| `.slice(-10)` no total de timestamps | Cada sensor contribui seus proprios 10 timestamps |
-| Eixo X: 10 horarios | Eixo X: todos os horarios necessarios |
-| Sensores sem dados no janela aparecem vazios | Cada sensor tem suas 10 leituras garantidas |
+**Mudanca 2 -- Adicionar `connectNulls` nas linhas (linhas 435 e 470)**
 
-Nenhuma outra mudanca necessaria -- altura e legenda ja estao corretas.
+Adicionar `connectNulls={true}` nos componentes `<Line>` de ambos os graficos. Isso faz o Recharts desenhar linhas entre pontos do mesmo sensor mesmo quando ha timestamps intermediarios onde aquele sensor nao tem valor.
+
+Antes:
+```
+<Line key={sensorId} type="monotone" dataKey={sensorId} stroke={...} strokeWidth={1.5} dot={{ r: 2 }} />
+```
+
+Depois:
+```
+<Line key={sensorId} type="monotone" dataKey={sensorId} stroke={...} strokeWidth={1.5} dot={{ r: 2 }} connectNulls={true} />
+```
+
+## Resumo das mudancas
+
+| Local | O que muda |
+|-------|-----------|
+| L159-165 | Filtrar por `devices.filter(d => d.type === type)` em vez de excluir apenas command_box |
+| L435 | Adicionar `connectNulls={true}` na Line de frequencia |
+| L470 | Adicionar `connectNulls={true}` na Line de aceleracao |
+
+A logica de "ultimos 10 pontos por sensor" e o eixo de tempo unificado permanecem inalterados.
 
