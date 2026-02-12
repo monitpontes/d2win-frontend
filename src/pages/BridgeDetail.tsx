@@ -79,8 +79,8 @@ export default function BridgeDetail() {
 
   // Use API to fetch bridge data
   const { bridge, isLoading: isLoadingBridge } = useBridge(id);
-  const { devices: sensors } = useDevices(undefined, id);
-  const { latestData: telemetryData, timeSeriesData } = useTelemetry(id);
+  const { devices: sensors, isLoading: isDevicesLoading } = useDevices(undefined, id);
+  const { latestData: telemetryData, timeSeriesData, isLoading: isTelemetryLoading } = useTelemetry(id);
   const { rawLimits, limits } = useBridgeLimits(id);
 
   // Converter limites da API para formato de thresholds
@@ -221,7 +221,9 @@ export default function BridgeDetail() {
     }
   }, [bridge3DSensors, searchParams, selectedSensor3D]);
 
-  if (isLoadingBridge) {
+  const isPageLoading = isLoadingBridge || isDevicesLoading || isTelemetryLoading;
+
+  if (isPageLoading) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-6">
         <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
@@ -334,33 +336,32 @@ export default function BridgeDetail() {
     <div className="flex-1 overflow-auto">
       {/* Header */}
       <div className="border-b bg-card p-4 md:p-6">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-2 md:gap-4">
             <Button variant="ghost" size="sm" asChild>
               <Link to="/dashboard" className="flex items-center gap-1">
                 <ArrowLeft className="h-4 w-4" />
-                Dashboard
+                <span className="hidden sm:inline">Dashboard</span>
               </Link>
             </Button>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold">{bridge.name}</h1>
-              </div>
-              <p className="text-sm text-muted-foreground">ID: {bridge.id}</p>
+              <h1 className="text-base md:text-xl font-bold">{bridge.name}</h1>
+              <p className="text-xs md:text-sm text-muted-foreground">ID: {bridge.id}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 rounded-lg border-2 border-destructive/50 bg-destructive/5 px-4 py-2">
-            <span className="text-sm text-muted-foreground">Status Estrutural:</span>
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border-2 border-destructive/50 bg-destructive/5 px-3 py-1.5 md:px-4 md:py-2">
+            <span className="text-xs md:text-sm text-muted-foreground">Status:</span>
             <Badge className={structuralStatusConfig.badgeClass}>
               {bridge.structuralStatus === 'critico' ? 'Crítico' : structuralStatusConfig.label}
             </Badge>
             {needsIntervention && (
               <button
                 onClick={() => setSelectedTab('monitoring')}
-                className="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 hover:underline transition-all cursor-pointer"
+                className="flex items-center gap-1 text-xs md:text-sm text-destructive hover:text-destructive/80 hover:underline transition-all cursor-pointer"
               >
-                <TriangleAlert className="h-4 w-4" />
-                Intervenção recomendada
+                <TriangleAlert className="h-3 w-3 md:h-4 md:w-4" />
+                <span className="hidden sm:inline">Intervenção recomendada</span>
+                <span className="sm:hidden">Intervenção</span>
               </button>
             )}
           </div>
@@ -370,21 +371,25 @@ export default function BridgeDetail() {
       {/* Tabs */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1">
         <div className="border-b bg-card">
-          <TabsList className="h-14 w-full justify-stretch gap-0 rounded-none bg-transparent p-0">
-            <TabsTrigger value="monitoring" className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
-              Monitoramento e Dados
+          <TabsList className="h-10 md:h-14 w-full justify-stretch gap-0 rounded-none bg-transparent p-0 overflow-x-auto">
+            <TabsTrigger value="monitoring" className="relative h-10 md:h-14 flex-1 rounded-none border-b-2 border-transparent text-xs md:text-sm font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
+              <span className="hidden md:inline">Monitoramento e Dados</span>
+              <span className="md:hidden">Monitor.</span>
             </TabsTrigger>
-            <TabsTrigger value="specifications" className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
-              Especificações
+            <TabsTrigger value="specifications" className="relative h-10 md:h-14 flex-1 rounded-none border-b-2 border-transparent text-xs md:text-sm font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
+              <span className="hidden md:inline">Especificações</span>
+              <span className="md:hidden">Espec.</span>
             </TabsTrigger>
-            <TabsTrigger value="cameras" className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
+            <TabsTrigger value="cameras" className="relative h-10 md:h-14 flex-1 rounded-none border-b-2 border-transparent text-xs md:text-sm font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
               Câmeras
             </TabsTrigger>
-            <TabsTrigger value="service" className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
-              Dashboard de Serviço
+            <TabsTrigger value="service" className="relative h-10 md:h-14 flex-1 rounded-none border-b-2 border-transparent text-xs md:text-sm font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
+              <span className="hidden md:inline">Dashboard de Serviço</span>
+              <span className="md:hidden">Serviço</span>
             </TabsTrigger>
-            <TabsTrigger value="schedules" className="relative h-14 flex-1 rounded-none border-b-2 border-transparent font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
-              Programações
+            <TabsTrigger value="schedules" className="relative h-10 md:h-14 flex-1 rounded-none border-b-2 border-transparent text-xs md:text-sm font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none">
+              <span className="hidden md:inline">Programações</span>
+              <span className="md:hidden">Progr.</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -646,7 +651,7 @@ export default function BridgeDetail() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
                   {bridge3DSensors.map((sensor) => {
                     const isAlert = sensor.status === 'alert' || sensor.status === 'critical';
                     const isFrequency = sensor.deviceType === 'frequencia';

@@ -195,7 +195,7 @@ export default function Dashboard() {
       <main className="flex-1 overflow-auto p-4">
         {/* Header compacto */}
         <div className="mb-4">
-          <h1 className="text-xl font-bold text-foreground">Dashboard – Ativos</h1>
+          <h1 className="text-lg md:text-xl font-bold text-foreground">Dashboard – Ativos</h1>
           <p className="text-sm text-muted-foreground">
             Gerencie e monitore suas pontes e viadutos
           </p>
@@ -210,70 +210,70 @@ export default function Dashboard() {
         ) : (
           <>
             {/* Stats Cards Row */}
-            <div className="mb-4 grid gap-3 grid-cols-3 lg:grid-cols-6">
-              <div className="rounded-lg border bg-card p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                    <Building2 className="h-6 w-6 text-primary" />
+            <div className="mb-4 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+              <div className="rounded-lg border bg-card p-3 md:p-5">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="flex h-8 w-8 md:h-12 md:w-12 items-center justify-center rounded-lg bg-primary/10">
+                    <Building2 className="h-4 w-4 md:h-6 md:w-6 text-primary" />
                   </div>
                   <div>
-                    <p className="text-3xl font-bold">{stats.total}</p>
-                    <p className="text-sm text-muted-foreground">Total</p>
+                    <p className="text-2xl md:text-3xl font-bold">{stats.total}</p>
+                    <p className="text-xs md:text-sm text-muted-foreground">Total</p>
                   </div>
                 </div>
               </div>
-              <div className="rounded-lg border bg-card p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-success/10">
-                    <CheckCircle className="h-6 w-6 text-success" />
+              <div className="rounded-lg border bg-card p-3 md:p-5">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="flex h-8 w-8 md:h-12 md:w-12 items-center justify-center rounded-lg bg-success/10">
+                    <CheckCircle className="h-4 w-4 md:h-6 md:w-6 text-success" />
                   </div>
                   <div>
-                    <p className="text-3xl font-bold">{stats.operacional}</p>
-                    <p className="text-sm text-muted-foreground">Operacional</p>
+                    <p className="text-2xl md:text-3xl font-bold">{stats.operacional}</p>
+                    <p className="text-xs md:text-sm text-muted-foreground">Operacional</p>
                   </div>
                 </div>
               </div>
-              <div className="rounded-lg border bg-card p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-warning/10">
-                    <Activity className="h-6 w-6 text-warning" />
+              <div className="rounded-lg border bg-card p-3 md:p-5">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="flex h-8 w-8 md:h-12 md:w-12 items-center justify-center rounded-lg bg-warning/10">
+                    <Activity className="h-4 w-4 md:h-6 md:w-6 text-warning" />
                   </div>
                   <div>
-                    <p className="text-3xl font-bold">{stats.atencao}</p>
-                    <p className="text-sm text-muted-foreground">C/ Atenção</p>
+                    <p className="text-2xl md:text-3xl font-bold">{stats.atencao}</p>
+                    <p className="text-xs md:text-sm text-muted-foreground">C/ Atenção</p>
                   </div>
                 </div>
               </div>
-              <div className="rounded-lg border bg-card p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-orange-500/10">
-                    <AlertTriangle className="h-6 w-6 text-orange-500" />
+              <div className="rounded-lg border bg-card p-3 md:p-5">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="flex h-8 w-8 md:h-12 md:w-12 items-center justify-center rounded-lg bg-orange-500/10">
+                    <AlertTriangle className="h-4 w-4 md:h-6 md:w-6 text-orange-500" />
                   </div>
                   <div>
-                    <p className="text-3xl font-bold">{stats.restricoes}</p>
-                    <p className="text-sm text-muted-foreground">C/ Restrições</p>
+                    <p className="text-2xl md:text-3xl font-bold">{stats.restricoes}</p>
+                    <p className="text-xs md:text-sm text-muted-foreground">C/ Restrições</p>
                   </div>
                 </div>
               </div>
-              <div className="rounded-lg border bg-card p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-destructive/10">
-                    <ShieldAlert className="h-6 w-6 text-destructive" />
+              <div className="rounded-lg border bg-card p-3 md:p-5">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="flex h-8 w-8 md:h-12 md:w-12 items-center justify-center rounded-lg bg-destructive/10">
+                    <ShieldAlert className="h-4 w-4 md:h-6 md:w-6 text-destructive" />
                   </div>
                   <div>
-                    <p className="text-3xl font-bold">{stats.critico}</p>
-                    <p className="text-sm text-muted-foreground">Crítico</p>
+                    <p className="text-2xl md:text-3xl font-bold">{stats.critico}</p>
+                    <p className="text-xs md:text-sm text-muted-foreground">Crítico</p>
                   </div>
                 </div>
               </div>
-              <div className="rounded-lg border bg-card p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-destructive/10">
-                    <Ban className="h-6 w-6 text-destructive" />
+              <div className="rounded-lg border bg-card p-3 md:p-5">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="flex h-8 w-8 md:h-12 md:w-12 items-center justify-center rounded-lg bg-destructive/10">
+                    <Ban className="h-4 w-4 md:h-6 md:w-6 text-destructive" />
                   </div>
                   <div>
-                    <p className="text-3xl font-bold">{stats.interdicao}</p>
-                    <p className="text-sm text-muted-foreground">Interdição</p>
+                    <p className="text-2xl md:text-3xl font-bold">{stats.interdicao}</p>
+                    <p className="text-xs md:text-sm text-muted-foreground">Interdição</p>
                   </div>
                 </div>
               </div>

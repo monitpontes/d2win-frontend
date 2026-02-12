@@ -33,22 +33,22 @@ export function Header() {
       {/* Logo */}
       <Link to="/dashboard" className="flex items-center gap-2">
         <img src={d2winLogo} alt="D2WIN" className="h-9 w-auto" />
-        <span className="text-xl font-bold text-foreground">d2win - Monitoramento Estrutural</span>
+        <span className="text-sm md:text-xl font-bold text-foreground">d2win<span className="hidden md:inline"> - Monitoramento Estrutural</span></span>
       </Link>
 
       {/* Navigation */}
       <nav className="flex items-center gap-2">
-        <Button variant={isActive('/dashboard') ? 'secondary' : 'ghost'} asChild>
-          <Link to="/dashboard" className="flex items-center gap-2">
+        <Button variant={isActive('/dashboard') ? 'secondary' : 'ghost'} size="sm" asChild>
+          <Link to="/dashboard" className="flex items-center gap-1 md:gap-2">
             <LayoutDashboard className="h-4 w-4" />
-            Dashboard
+            <span className="hidden sm:inline">Dashboard</span>
           </Link>
         </Button>
 
-        {canAccessAdmin() && <Button variant={isActive('/admin') ? 'secondary' : 'ghost'} asChild>
-            <Link to="/admin" className="flex items-center gap-2">
+        {canAccessAdmin() && <Button variant={isActive('/admin') ? 'secondary' : 'ghost'} size="sm" asChild>
+            <Link to="/admin" className="flex items-center gap-1 md:gap-2">
               <Settings className="h-4 w-4" />
-              Admin
+              <span className="hidden sm:inline">Admin</span>
             </Link>
           </Button>}
       </nav>
