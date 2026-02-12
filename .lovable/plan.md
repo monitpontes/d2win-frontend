@@ -1,51 +1,75 @@
 
 
-# Corrigir graficos: filtro por tipo do sensor + linhas conectadas
+# Tela de carregamento completa + Responsividade para todos os formatos de tela
 
-## Problemas atuais
+## Parte 1: Carregamento completo antes de exibir conteudo
 
-1. **Frequencia**: Aparece so pontos isolados sem linhas conectando-os. Cada sensor tem timestamps diferentes, criando gaps (`undefined`) entre pontos, e o Recharts nao desenha linha quando encontra `undefined`.
+### Dashboard (`src/pages/Dashboard.tsx`)
+- Atualmente ja tem um loading state baseado em `isLoading` dos bridges, mas o mapa, graficos e cards aparecem antes de todos os dados estarem prontos
+- Manter o loading spinner existente como esta (ja funciona bem para o caso principal)
+- Nenhuma mudanca necessaria aqui -- o `isLoading` do `useBridges` ja controla a exibicao
 
-2. **Aceleracao**: Mesma situacao -- pontos soltos sem linhas, e aparecendo sensores que nao sao de aceleracao porque o filtro atual usa exclusao de `command_box` em vez de filtrar positivamente pelo tipo configurado.
+### BridgeDetail (`src/pages/BridgeDetail.tsx`)
+- Atualmente so espera `isLoadingBridge` (dados da ponte), mas os sensores (`useDevices`) e telemetria (`useTelemetry`) carregam depois, causando graficos vazios e dados parciais
+- Adicionar verificacao de `isLoading` dos hooks `useDevices` e `useTelemetry` 
+- Criar um estado unificado `isPageLoading = isLoadingBridge || isDevicesLoading || isTelemetryLoading`
+- Mostrar o spinner de carregamento ate que TODOS os dados estejam prontos
+- Isso resolve graficos aparecendo vazios e dados "-" temporarios
 
-3. **Ambos os graficos**: Devem mostrar apenas sensores configurados como o tipo correto no banco de dados (`device.type === 'frequency'` ou `device.type === 'acceleration'`).
+**Mudancas no arquivo:**
+- Linha 82-83: Adicionar destructuring dos `isLoading` de devices e telemetry
+- Linha 224-231: Trocar condicao de `isLoadingBridge` para `isPageLoading` (combinacao dos 3 loadings)
 
-## Solucao
+### BridgeCard (`src/components/dashboard/BridgeCard.tsx`)
+- Ja implementa loading unificado (`isDataLoading = isDevicesLoading || isTelemetryLoading`) com skeleton -- sem mudancas necessarias
 
-### Arquivo: `src/components/dashboard/BridgeCard.tsx`
+---
 
-**Mudanca 1 -- Filtro por tipo do sensor (linhas 159-165)**
+## Parte 2: Responsividade para diferentes formatos de tela
 
-Voltar a filtrar positivamente por `device.type`:
+### Header (`src/components/layout/Header.tsx`)
+- Titulo "d2win - Monitoramento Estrutural" esta cortado em telas menores (visivel na imagem do usuario)
+- Reduzir fonte do titulo em telas menores: `text-sm md:text-xl`
+- Esconder texto longo em mobile, mostrar so "d2win" ou so o logo
+- Tornar navegacao mais compacta em telas menores
 
-```
-validDeviceIds = devices onde type === 'frequency' (ou 'acceleration')
-filtered = timeSeriesData onde type bate E deviceId esta nos validos
-```
+**Mudancas:**
+- L36: Texto do logo -- esconder "- Monitoramento Estrutural" em mobile com `hidden md:inline`
+- L41-53: Botoes de navegacao -- reduzir padding e esconder texto em mobile, mantendo so icones
 
-Com fallback: se nenhum device estiver cadastrado com aquele tipo, usa exclusao de `command_box` para nao mostrar grafico vazio.
+### Dashboard (`src/pages/Dashboard.tsx`)
+- Stats cards: mudar grid de `grid-cols-3 lg:grid-cols-6` para `grid-cols-2 sm:grid-cols-3 lg:grid-cols-6`
+- Reduzir tamanho dos numeros e icones em mobile: `text-2xl md:text-3xl` nos valores, `h-8 w-8 md:h-12 md:w-12` nos icones
+- Padding dos cards: `p-3 md:p-5`
+- Area do mapa + KPI: ja e `grid-cols-1 lg:grid-cols-4`, OK
+- Titulo: reduzir fonte `text-lg md:text-xl`
 
-**Mudanca 2 -- Adicionar `connectNulls` nas linhas (linhas 435 e 470)**
+### BridgeDetail (`src/pages/BridgeDetail.tsx`)
+- Tabs: em telas menores, os nomes das abas ficam cortados. Reduzir fonte e usar nomes curtos
+- Tab triggers: adicionar `text-xs md:text-sm` e truncar texto
+- Grid de sensores: `grid-cols-2 md:grid-cols-3 lg:grid-cols-5` em vez de fixo em 5
+- Header da ponte: empilhar verticalmente em mobile (status badge abaixo do nome)
 
-Adicionar `connectNulls={true}` nos componentes `<Line>` de ambos os graficos. Isso faz o Recharts desenhar linhas entre pontos do mesmo sensor mesmo quando ha timestamps intermediarios onde aquele sensor nao tem valor.
+**Mudancas:**
+- L336-368: Header -- empilhar flex em mobile com `flex-col md:flex-row`
+- L373-389: TabsList -- texto menor com `text-xs md:text-sm`, abreviar nomes em mobile
+- L649: Grid de sensores -- responsivo com `grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5`
 
-Antes:
-```
-<Line key={sensorId} type="monotone" dataKey={sensorId} stroke={...} strokeWidth={1.5} dot={{ r: 2 }} />
-```
+### DashboardCharts (`src/components/dashboard/DashboardCharts.tsx`)
+- Grid: `grid-cols-1 md:grid-cols-3` (ja esta OK)
+- Altura dos graficos: manter `h-[170px]`
 
-Depois:
-```
-<Line key={sensorId} type="monotone" dataKey={sensorId} stroke={...} strokeWidth={1.5} dot={{ r: 2 }} connectNulls={true} />
-```
+### CompanySidebar (`src/components/layout/CompanySidebar.tsx`)
+- Em mobile deveria iniciar colapsada
+- Sem mudanca agora, manter comportamento atual (ja tem botao de colapsar)
 
-## Resumo das mudancas
+---
 
-| Local | O que muda |
-|-------|-----------|
-| L159-165 | Filtrar por `devices.filter(d => d.type === type)` em vez de excluir apenas command_box |
-| L435 | Adicionar `connectNulls={true}` na Line de frequencia |
-| L470 | Adicionar `connectNulls={true}` na Line de aceleracao |
+## Resumo de arquivos a editar
 
-A logica de "ultimos 10 pontos por sensor" e o eixo de tempo unificado permanecem inalterados.
+| Arquivo | Mudancas |
+|---------|----------|
+| `src/pages/BridgeDetail.tsx` | Loading unificado (bridge + devices + telemetry); responsividade do header, tabs e grid de sensores |
+| `src/pages/Dashboard.tsx` | Responsividade dos stats cards (grid, fontes, padding) |
+| `src/components/layout/Header.tsx` | Esconder texto longo em mobile, compactar navegacao |
 
